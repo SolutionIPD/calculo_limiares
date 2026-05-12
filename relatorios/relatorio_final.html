@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Análise de Código e Processo">
+<meta name="dcterms.date" content="2026-05-07">
+
+<title>Relatório Técnico: Metodologia de Cálculo de Limiares de Alerta</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="relatorio_final_files/libs/clipboard/clipboard.min.js"></script>
+<script src="relatorio_final_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="relatorio_final_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="relatorio_final_files/libs/quarto-html/popper.min.js"></script>
+<script src="relatorio_final_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="relatorio_final_files/libs/quarto-html/anchor.min.js"></script>
+<link href="relatorio_final_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="relatorio_final_files/libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="relatorio_final_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="relatorio_final_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="relatorio_final_files/libs/bootstrap/bootstrap-5f9d82f43c92ea15b1a8bd5154934b30.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="relatorio_final_files/libs/htmltools-fill-0.5.9/fill.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/htmlwidgets-1.6.4/htmlwidgets.js"></script>
+<link href="relatorio_final_files/libs/datatables-css-0.0.0/datatables-crosstalk.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/datatables-binding-0.34.0/datatables.js"></script>
+<script src="relatorio_final_files/libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<link href="relatorio_final_files/libs/dt-core-1.13.6/css/jquery.dataTables.min.css" rel="stylesheet">
+<link href="relatorio_final_files/libs/dt-core-1.13.6/css/jquery.dataTables.extra.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/dt-core-1.13.6/js/jquery.dataTables.min.js"></script>
+<link href="relatorio_final_files/libs/nouislider-7.0.10/jquery.nouislider.min.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/nouislider-7.0.10/jquery.nouislider.min.js"></script>
+<link href="relatorio_final_files/libs/selectize-0.12.0/selectize.bootstrap3.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/selectize-0.12.0/selectize.min.js"></script>
+<link href="relatorio_final_files/libs/crosstalk-1.2.2/css/crosstalk.min.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/crosstalk-1.2.2/js/crosstalk.min.js"></script>
+<script src="relatorio_final_files/libs/plotly-binding-4.12.0/plotly.js"></script>
+<script src="relatorio_final_files/libs/typedarray-0.1/typedarray.min.js"></script>
+<link href="relatorio_final_files/libs/plotly-htmlwidgets-css-2.25.2/plotly-htmlwidgets.css" rel="stylesheet">
+<script src="relatorio_final_files/libs/plotly-main-2.25.2/plotly-latest.min.js"></script>
+</head><body class="fullcontent quarto-light">\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+
+
+
+
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Relatório Técnico: Metodologia de Cálculo de Limiares de Alerta</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Análise de Código e Processo </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 7, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ==============================================================================</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># 0. Carregamento de Pacotes e Configurações Iniciais</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==============================================================================</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Limpa o ambiente de trabalho</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(<span class="at">list =</span> <span class="fu">ls</span>())</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Carregando pacotes necessários</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(flexdashboard)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+✔ dplyr     1.2.1     ✔ readr     2.1.6
+✔ forcats   1.0.1     ✔ stringr   1.6.0
+✔ ggplot2   4.0.3     ✔ tibble    3.3.1
+✔ lubridate 1.9.4     ✔ tidyr     1.3.2
+✔ purrr     1.2.1     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::filter() masks stats::filter()
+✖ dplyr::lag()    masks stats::lag()
+ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tweedie)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(statmod) <span class="co"># Necessário para a família tweedie no glm</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(plotly)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'plotly'
+
+The following object is masked from 'package:ggplot2':
+
+    last_plot
+
+The following object is masked from 'package:stats':
+
+    filter
+
+The following object is masked from 'package:graphics':
+
+    layout</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(DT)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Configuração de Caminhos e Parâmetros ---</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>data_path <span class="ot">&lt;-</span> <span class="st">"/home/thiago/calculo_limiares/dados/"</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>cuts <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fl">0.65</span>, <span class="fl">0.85</span>, <span class="fl">0.95</span>, <span class="fl">0.99</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="column" class="level2" data-width="350">
+<h2 data-width="350" class="anchored" data-anchor-id="column">Column</h2>
+<section id="visão-geral-e-metodologia" class="level3">
+<h3 class="anchored" data-anchor-id="visão-geral-e-metodologia">1. Visão Geral e Metodologia</h3>
+<p><strong>Introdução</strong></p>
+<p>Este dashboard descreve o processo de cálculo dos limiares de chuva acumulada (em mm) utilizados para a emissão de alertas de risco de deslizamento. O objetivo é consolidar o conhecimento sobre a metodologia, os dados envolvidos e os resultados gerados, servindo como base para a evolução do sistema.</p>
+<p><strong>Mapeamento de Dados</strong></p>
+<p>O processo depende das seguintes fontes:</p>
+<ul>
+<li><strong>Parâmetros Pré-calculados</strong>: Arquivo <code>tb_params_automatico.rds</code> contendo os parâmetros (<code>mu</code>, <code>phi</code>, <code>power</code>) da distribuição Tweedie para diversas estações.</li>
+<li><strong>Dados de Novas Estações</strong>: Estações sem parâmetros pré-definidos (<code>Veranópolis</code>, <code>Barão</code>, etc.) utilizam os parâmetros da estação <code>"BENTO GONCALVES"</code> como aproximação.</li>
+<li><strong>Dados Históricos</strong>: Coletados de fontes como o INMET. A qualidade destes dados é fundamental para a precisão do modelo.</li>
+</ul>
+<p><strong>Metodologia Estatística: Distribuição Tweedie</strong></p>
+<p>O pilar do cálculo é a <strong>distribuição Tweedie</strong>, ideal para modelar dados de precipitação, pois lida com valores <strong>zero</strong> (dias sem chuva) e <strong>contínuos positivos</strong> (dias com chuva).</p>
+<p>O script consome os parâmetros pré-calculados e utiliza a <strong>função quantílica</strong> (<code>tweedie::qtweedie</code>) para encontrar os valores de chuva que correspondem aos seguintes percentis (<code>cuts</code>):</p>
+<ul>
+<li><strong>65%</strong>: Limiar “Moderado”</li>
+<li><strong>85%</strong>: Limiar “Alto”</li>
+<li><strong>95%</strong>: Limiar “Muito Alto”</li>
+<li><strong>99%</strong>: Limiar “Altíssimo”</li>
+</ul>
+</section>
+</section>
+<section id="column-1" class="level2" data-width="650">
+<h2 data-width="650" class="anchored" data-anchor-id="column-1">Column</h2>
+<section id="limiares-por-estação-acumulado-96h" class="level3">
+<h3 class="anchored" data-anchor-id="limiares-por-estação-acumulado-96h">2. Limiares por Estação (Acumulado 96h)</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Carregando os parâmetros do modelo Tweedie.</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>tb_params_originais <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(data_path, <span class="st">"tb_params_automatico.rds"</span>)) <span class="sc">|&gt;</span> <span class="fu">as_tibble</span>()</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Adiciona metadados para novas estações que não estão no arquivo original.</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>tb_meta_op_data <span class="ot">&lt;-</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a> <span class="fu">tibble</span>(</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>   <span class="st">"station"</span> <span class="ot">=</span> <span class="fu">c</span>(<span class="st">"Veranópolis"</span>, <span class="st">"Barão"</span>, <span class="st">"Bento Gonçalves"</span>, <span class="st">"VDT_Cidade"</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a> )</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Para as novas estações, o script de alerta usa os parâmetros da estação "BENTO GONCALVES".</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>tb_params_novas_estacoes <span class="ot">&lt;-</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a> <span class="fu">map</span>(tb_meta_op_data<span class="sc">$</span>station,</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>     <span class="cf">function</span>(x) {</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>       tb_params_originais <span class="sc">|&gt;</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>         <span class="fu">filter</span>(station <span class="sc">==</span> <span class="st">"BENTO GONCALVES"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>         <span class="fu">mutate</span>(<span class="at">station =</span> x)</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>     }) <span class="sc">|&gt;</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a> <span class="fu">bind_rows</span>()</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Combina os parâmetros originais com os das novas estações.</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>tb_params <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(tb_params_novas_estacoes, tb_params_originais) <span class="sc">|&gt;</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a> <span class="fu">distinct</span>(station, horas, <span class="at">.keep_all =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Função que calcula os limiares de chuva (em mm)</span></span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>susceptibility_limits <span class="ot">&lt;-</span> <span class="cf">function</span>(tb_params, station, <span class="at">hours =</span> <span class="dv">96</span>, cuts) {</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a> params <span class="ot">&lt;-</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>   tb_params <span class="sc">|&gt;</span></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>   <span class="fu">filter</span>(station <span class="sc">==</span> <span class="sc">!!</span>station, horas <span class="sc">==</span> <span class="sc">!!</span>hours) <span class="sc">|&gt;</span></span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>   <span class="fu">select</span>(<span class="fu">c</span>(<span class="st">"mu"</span>, <span class="st">"phi"</span>, <span class="st">"power"</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>   <span class="fu">as.list</span>()</span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a> <span class="cf">if</span> (<span class="fu">length</span>(params<span class="sc">$</span>mu) <span class="sc">==</span> <span class="dv">0</span>) <span class="fu">return</span>(<span class="fu">rep</span>(<span class="cn">NA</span>, <span class="fu">length</span>(cuts)))</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a> bks <span class="ot">&lt;-</span> tweedie<span class="sc">::</span><span class="fu">qtweedie</span>(cuts, <span class="at">mu =</span> params<span class="sc">$</span>mu, <span class="at">phi =</span> params<span class="sc">$</span>phi, <span class="at">power =</span> params<span class="sc">$</span>power)</span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a> <span class="fu">return</span>(bks)</span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Cálculo e Exibição dos Limiares ---</span></span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>limiares_por_estacao <span class="ot">&lt;-</span></span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a> <span class="fu">unique</span>(tb_params<span class="sc">$</span>station) <span class="sc">|&gt;</span></span>
+<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a> <span class="fu">map_df</span>(<span class="sc">~</span> {</span>
+<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a>   limites <span class="ot">&lt;-</span> <span class="fu">susceptibility_limits</span>(tb_params, <span class="at">station =</span> .x, <span class="at">hours =</span> <span class="dv">96</span>, <span class="at">cuts =</span> cuts)</span>
+<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a>   <span class="fu">tibble</span>(</span>
+<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a>     <span class="at">Estacao =</span> .x,</span>
+<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a>     <span class="st">`</span><span class="at">Moderado (mm)</span><span class="st">`</span> <span class="ot">=</span> limites[<span class="dv">1</span>],</span>
+<span id="cb6-46"><a href="#cb6-46" aria-hidden="true" tabindex="-1"></a>     <span class="st">`</span><span class="at">Alto (mm)</span><span class="st">`</span> <span class="ot">=</span> limites[<span class="dv">2</span>],</span>
+<span id="cb6-47"><a href="#cb6-47" aria-hidden="true" tabindex="-1"></a>     <span class="st">`</span><span class="at">Muito Alto (mm)</span><span class="st">`</span> <span class="ot">=</span> limites[<span class="dv">3</span>],</span>
+<span id="cb6-48"><a href="#cb6-48" aria-hidden="true" tabindex="-1"></a>     <span class="st">`</span><span class="at">Altíssimo (mm)</span><span class="st">`</span> <span class="ot">=</span> limites[<span class="dv">4</span>]</span>
+<span id="cb6-49"><a href="#cb6-49" aria-hidden="true" tabindex="-1"></a>   )</span>
+<span id="cb6-50"><a href="#cb6-50" aria-hidden="true" tabindex="-1"></a> }) <span class="sc">|&gt;</span></span>
+<span id="cb6-51"><a href="#cb6-51" aria-hidden="true" tabindex="-1"></a> <span class="fu">arrange</span>(Estacao)</span>
+<span id="cb6-52"><a href="#cb6-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-53"><a href="#cb6-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Exibindo a tabela de limiares calculados</span></span>
+<span id="cb6-54"><a href="#cb6-54" aria-hidden="true" tabindex="-1"></a><span class="fu">datatable</span>(limiares_por_estacao <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span><span class="fu">round</span>(., <span class="dv">2</span>))),</span>
+<span id="cb6-55"><a href="#cb6-55" aria-hidden="true" tabindex="-1"></a>          <span class="at">options =</span> <span class="fu">list</span>(<span class="at">pageLength =</span> <span class="dv">15</span>, <span class="at">dom =</span> <span class="st">'ft'</span>),</span>
+<span id="cb6-56"><a href="#cb6-56" aria-hidden="true" tabindex="-1"></a>          <span class="at">rownames =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb6-57"><a href="#cb6-57" aria-hidden="true" tabindex="-1"></a>          <span class="at">filter =</span> <span class="st">'top'</span>,</span>
+<span id="cb6-58"><a href="#cb6-58" aria-hidden="true" tabindex="-1"></a>          <span class="at">caption =</span> <span class="st">"Tabela interativa com os limiares calculados para cada estação (Chuva Acumulada em 96h)."</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item" id="htmlwidget-6697d4142d14d74677ec" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-6697d4142d14d74677ec">{"x":{"filter":"top","vertical":false,"filterHTML":"<tr>\n  <td data-type=\"character\" style=\"vertical-align: top;\">\n    <div class=\"form-group has-feedback\" style=\"margin-bottom: auto;\">\n      <input type=\"search\" placeholder=\"All\" class=\"form-control\" style=\"width: 100%;\"/>\n      <span class=\"glyphicon glyphicon-remove-circle form-control-feedback\"><\/span>\n    <\/div>\n  <\/td>\n  <td data-type=\"number\" style=\"vertical-align: top;\">\n    <div class=\"form-group has-feedback\" style=\"margin-bottom: auto;\">\n      <input type=\"search\" placeholder=\"All\" class=\"form-control\" style=\"width: 100%;\"/>\n      <span class=\"glyphicon glyphicon-remove-circle form-control-feedback\"><\/span>\n    <\/div>\n    <div style=\"display: none;position: absolute;width: 200px;opacity: 1\">\n      <div data-min=\"16.38\" data-max=\"25.63\" data-scale=\"2\"><\/div>\n      <span style=\"float: left;\"><\/span>\n      <span style=\"float: right;\"><\/span>\n    <\/div>\n  <\/td>\n  <td data-type=\"number\" style=\"vertical-align: top;\">\n    <div class=\"form-group has-feedback\" style=\"margin-bottom: auto;\">\n      <input type=\"search\" placeholder=\"All\" class=\"form-control\" style=\"width: 100%;\"/>\n      <span class=\"glyphicon glyphicon-remove-circle form-control-feedback\"><\/span>\n    <\/div>\n    <div style=\"display: none;position: absolute;width: 200px;opacity: 1\">\n      <div data-min=\"33\" data-max=\"52.15\" data-scale=\"2\"><\/div>\n      <span style=\"float: left;\"><\/span>\n      <span style=\"float: right;\"><\/span>\n    <\/div>\n  <\/td>\n  <td data-type=\"number\" style=\"vertical-align: top;\">\n    <div class=\"form-group has-feedback\" style=\"margin-bottom: auto;\">\n      <input type=\"search\" placeholder=\"All\" class=\"form-control\" style=\"width: 100%;\"/>\n      <span class=\"glyphicon glyphicon-remove-circle form-control-feedback\"><\/span>\n    <\/div>\n    <div style=\"display: none;position: absolute;width: 200px;opacity: 1\">\n      <div data-min=\"54.24\" data-max=\"85.68\" data-scale=\"2\"><\/div>\n      <span style=\"float: left;\"><\/span>\n      <span style=\"float: right;\"><\/span>\n    <\/div>\n  <\/td>\n  <td data-type=\"number\" style=\"vertical-align: top;\">\n    <div class=\"form-group has-feedback\" style=\"margin-bottom: auto;\">\n      <input type=\"search\" placeholder=\"All\" class=\"form-control\" style=\"width: 100%;\"/>\n      <span class=\"glyphicon glyphicon-remove-circle form-control-feedback\"><\/span>\n    <\/div>\n    <div style=\"display: none;position: absolute;width: 200px;opacity: 1\">\n      <div data-min=\"84.75\" data-max=\"133.46\" data-scale=\"2\"><\/div>\n      <span style=\"float: left;\"><\/span>\n      <span style=\"float: right;\"><\/span>\n    <\/div>\n  <\/td>\n<\/tr>","caption":"<caption>Tabela interativa com os limiares calculados para cada estação (Chuva Acumulada em 96h).<\/caption>","data":[["BENTO GONCALVES","Barão","Bento Gonçalves","CAMBARA DO SUL","CANELA","SAO JOSE DOS AUSENTES","TEUTONIA","VACARIA","VDT_Cidade","Veranópolis"],[18.69,18.69,18.69,18.22,25.63,16.38,20.95,20.69,18.69,18.69],[41.56,41.56,41.56,39.86,52.15,33,43.48,44.41,41.56,41.56],[71.25,71.25,71.25,68.26000000000001,85.68000000000001,54.24,72.28,74.83,71.25,71.25],[114.15,114.15,114.15,109.67,133.46,84.75,113.58,118.46,114.15,114.15]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th>Estacao<\/th>\n      <th>Moderado (mm)<\/th>\n      <th>Alto (mm)<\/th>\n      <th>Muito Alto (mm)<\/th>\n      <th>Altíssimo (mm)<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"pageLength":15,"dom":"ft","columnDefs":[{"className":"dt-right","targets":[1,2,3,4]},{"name":"Estacao","targets":0},{"name":"Moderado (mm)","targets":1},{"name":"Alto (mm)","targets":2},{"name":"Muito Alto (mm)","targets":3},{"name":"Altíssimo (mm)","targets":4}],"order":[],"autoWidth":false,"orderClasses":false,"orderCellsTop":true,"lengthMenu":[10,15,25,50,100]}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<hr>
+</section>
+<section id="geração-de-parâmetros-e-comparativo" class="level3">
+<h3 class="anchored" data-anchor-id="geração-de-parâmetros-e-comparativo">3. Geração de Parâmetros e Comparativo</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Definição da Função Corrigida</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>fit_tweedie_corrigido <span class="ot">&lt;-</span> <span class="cf">function</span>(y) {</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>   <span class="cf">if</span> (<span class="fu">all</span>(y <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">||</span> <span class="fu">length</span>(<span class="fu">unique</span>(y)) <span class="sc">&lt;</span> <span class="dv">2</span>) {</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>       <span class="fu">return</span>(<span class="fu">list</span>(<span class="st">"mu"</span> <span class="ot">=</span> <span class="dv">0</span>, <span class="st">"phi"</span> <span class="ot">=</span> <span class="dv">1</span>, <span class="st">"power"</span> <span class="ot">=</span> <span class="fl">1.5</span>))</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>   }</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>   data_df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">y =</span> y)</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>   power_profile <span class="ot">&lt;-</span> <span class="fu">try</span>({</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>       <span class="fu">capture.output</span>(</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>           obj <span class="ot">&lt;-</span> tweedie<span class="sc">::</span><span class="fu">tweedie_profile</span>(y <span class="sc">~</span> <span class="dv">1</span>, <span class="at">data =</span> data_df, <span class="at">p.vec =</span> <span class="fu">seq</span>(<span class="fl">1.1</span>, <span class="fl">1.9</span>, <span class="at">by =</span> <span class="fl">0.1</span>), <span class="at">do.plot =</span> <span class="cn">FALSE</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>),</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>           <span class="at">type =</span> <span class="fu">c</span>(<span class="st">"output"</span>, <span class="st">"message"</span>)</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>       )</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>       obj</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>   }, <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>   p_otimo <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">inherits</span>(power_profile, <span class="st">"try-error"</span>)) <span class="fl">1.5</span> <span class="cf">else</span> power_profile<span class="sc">$</span>p.max</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>   modelo_glm <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> <span class="dv">1</span>, <span class="at">data =</span> data_df, <span class="at">family =</span> <span class="fu">tweedie</span>(<span class="at">var.power =</span> p_otimo, <span class="at">link.power =</span> <span class="dv">0</span>))</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>   params <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>      <span class="at">power =</span> p_otimo,</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>      <span class="at">mu =</span> <span class="fu">exp</span>(<span class="fu">coef</span>(modelo_glm)),</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>      <span class="at">phi =</span> <span class="fu">summary</span>(modelo_glm)<span class="sc">$</span>dispersion</span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>   <span class="fu">return</span>(params)</span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Comparativo por Estação ---</span></span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a><span class="co"># Para cada estação, comparamos os parâmetros originais com um novo ajuste sobre dados simulados.</span></span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a>estacoes_para_comparar <span class="ot">&lt;-</span> tb_params_originais <span class="sc">%&gt;%</span> <span class="fu">filter</span>(horas <span class="sc">==</span> <span class="dv">96</span>) <span class="sc">%&gt;%</span> <span class="fu">pull</span>(station) <span class="sc">%&gt;%</span> <span class="fu">unique</span>()</span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a>tabela_comparativa <span class="ot">&lt;-</span> <span class="fu">map_df</span>(estacoes_para_comparar, <span class="sc">~</span>{</span>
+<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>  estacao_atual <span class="ot">&lt;-</span> .x</span>
+<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>  params_metodo_2 <span class="ot">&lt;-</span> tb_params_originais <span class="sc">%&gt;%</span> <span class="fu">filter</span>(station <span class="sc">==</span> estacao_atual, horas <span class="sc">==</span> <span class="dv">96</span>) <span class="sc">%&gt;%</span> <span class="fu">select</span>(<span class="fu">c</span>(<span class="st">"mu"</span>, <span class="st">"phi"</span>, <span class="st">"power"</span>)) <span class="sc">%&gt;%</span> <span class="fu">as.list</span>()</span>
+<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span>(<span class="fu">length</span>(params_metodo_2<span class="sc">$</span>mu) <span class="sc">==</span> <span class="dv">0</span>) <span class="fu">return</span>(<span class="cn">NULL</span>)</span>
+<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a>  limiares_metodo_2 <span class="ot">&lt;-</span> tweedie<span class="sc">::</span><span class="fu">qtweedie</span>(cuts, <span class="at">mu =</span> params_metodo_2<span class="sc">$</span>mu, <span class="at">phi =</span> params_metodo_2<span class="sc">$</span>phi, <span class="at">power =</span> params_metodo_2<span class="sc">$</span>power)</span>
+<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a>  chuva_simulada <span class="ot">&lt;-</span> <span class="fu">rtweedie</span>(<span class="dv">2000</span>, <span class="at">power =</span> params_metodo_2<span class="sc">$</span>power, <span class="at">mu =</span> params_metodo_2<span class="sc">$</span>mu, <span class="at">phi =</span> params_metodo_2<span class="sc">$</span>phi)</span>
+<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a>  chuva_simulada[chuva_simulada <span class="sc">&lt;</span> <span class="fl">0.5</span>] <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>  params_metodo_1 <span class="ot">&lt;-</span> <span class="fu">fit_tweedie_corrigido</span>(chuva_simulada)</span>
+<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>  limiares_metodo_1 <span class="ot">&lt;-</span> tweedie<span class="sc">::</span><span class="fu">qtweedie</span>(cuts, <span class="at">mu =</span> params_metodo_1<span class="sc">$</span>mu, <span class="at">phi =</span> params_metodo_1<span class="sc">$</span>phi, <span class="at">power =</span> params_metodo_1<span class="sc">$</span>power)</span>
+<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(<span class="at">Estacao =</span> estacao_atual, <span class="at">Nivel =</span> <span class="fu">c</span>(<span class="st">"Moderado"</span>, <span class="st">"Alto"</span>, <span class="st">"Muito Alto"</span>, <span class="st">"Altíssimo"</span>), <span class="st">`</span><span class="at">Limiar (Reajustado)</span><span class="st">`</span> <span class="ot">=</span> limiares_metodo_1, <span class="st">`</span><span class="at">Limiar (Original RDS)</span><span class="st">`</span> <span class="ot">=</span> limiares_metodo_2)</span>
+<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Gráfico Comparativo ---</span></span>
+<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>tabela_longa <span class="ot">&lt;-</span> tabela_comparativa <span class="sc">%&gt;%</span></span>
+<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_longer</span>(<span class="at">cols =</span> <span class="fu">c</span>(<span class="st">`</span><span class="at">Limiar (Reajustado)</span><span class="st">`</span>, <span class="st">`</span><span class="at">Limiar (Original RDS)</span><span class="st">`</span>), <span class="at">names_to =</span> <span class="st">"Metodo"</span>, <span class="at">values_to =</span> <span class="st">"Limiar_mm"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">Nivel =</span> <span class="fu">factor</span>(Nivel, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"Moderado"</span>, <span class="st">"Alto"</span>, <span class="st">"Muito Alto"</span>, <span class="st">"Altíssimo"</span>)))</span>
+<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(tabela_longa, <span class="fu">aes</span>(<span class="at">x =</span> Nivel, <span class="at">y =</span> Limiar_mm, <span class="at">fill =</span> Metodo,</span>
+<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>                         <span class="at">text =</span> <span class="fu">paste</span>(<span class="st">"Estação:"</span>, Estacao, <span class="st">"&lt;br&gt;Método:"</span>, Metodo, <span class="st">"&lt;br&gt;Nível:"</span>, Nivel, <span class="st">"&lt;br&gt;Limiar:"</span>, <span class="fu">round</span>(Limiar_mm, <span class="dv">2</span>), <span class="st">"mm"</span>))) <span class="sc">+</span></span>
+<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_bar</span>(<span class="at">stat =</span> <span class="st">"identity"</span>, <span class="at">position =</span> <span class="st">"dodge"</span>) <span class="sc">+</span></span>
+<span id="cb7-52"><a href="#cb7-52" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> Estacao, <span class="at">scales =</span> <span class="st">"free_y"</span>) <span class="sc">+</span></span>
+<span id="cb7-53"><a href="#cb7-53" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Comparação de Limiares (mm) por Estação"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Chuva Acumulada (mm)"</span>, <span class="at">fill =</span> <span class="st">""</span>) <span class="sc">+</span></span>
+<span id="cb7-54"><a href="#cb7-54" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb7-55"><a href="#cb7-55" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position=</span><span class="st">"bottom"</span>, <span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">45</span>, <span class="at">hjust =</span> <span class="dv">1</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A geração dos parâmetros (<code>mu</code>, <code>phi</code>, <code>power</code>) é a etapa mais crítica. A função <code>fit_tweedie</code> original foi corrigida para usar <code>tweedie::tweedie_profile</code>, pois a versão anterior estava descontinuada.</p>
+<p>Abaixo, comparamos os limiares gerados por dois métodos:</p>
+<ol type="1">
+<li><strong>Método 1 (GLM sobre Dados Simulados)</strong>: Parâmetros calculados usando a função <code>fit_tweedie_corrigido</code> sobre dados de chuva <strong>simulados a partir dos parâmetros de Bento Gonçalves</strong>. O objetivo é validar se a função de ajuste consegue recuperar os parâmetros originais.</li>
+<li><strong>Método 2 (RDS Bento Gonçalves)</strong>: Parâmetros originais da estação “BENTO GONCALVES”, usados como “fonte da verdade” para a simulação e comparação.</li>
+</ol>
+<section id="tabela-comparativa" class="level4">
+<h4 class="anchored" data-anchor-id="tabela-comparativa">Tabela Comparativa</h4>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">datatable</span>(tabela_comparativa <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span><span class="fu">round</span>(., <span class="dv">2</span>))),</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>          <span class="at">options =</span> <span class="fu">list</span>(<span class="at">dom =</span> <span class="st">'t'</span>),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>          <span class="at">rownames =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>          <span class="at">caption =</span> <span class="st">"Comparação dos limiares calculados pelos dois métodos."</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item" id="htmlwidget-c338bd7ca4c0d50268a7" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-c338bd7ca4c0d50268a7">{"x":{"filter":"none","vertical":false,"caption":"<caption>Comparação dos limiares calculados pelos dois métodos.<\/caption>","data":[["BENTO GONCALVES","BENTO GONCALVES","BENTO GONCALVES","BENTO GONCALVES","SAO JOSE DOS AUSENTES","SAO JOSE DOS AUSENTES","SAO JOSE DOS AUSENTES","SAO JOSE DOS AUSENTES","VACARIA","VACARIA","VACARIA","VACARIA","CAMBARA DO SUL","CAMBARA DO SUL","CAMBARA DO SUL","CAMBARA DO SUL","CANELA","CANELA","CANELA","CANELA","TEUTONIA","TEUTONIA","TEUTONIA","TEUTONIA"],["Moderado","Alto","Muito Alto","Altíssimo","Moderado","Alto","Muito Alto","Altíssimo","Moderado","Alto","Muito Alto","Altíssimo","Moderado","Alto","Muito Alto","Altíssimo","Moderado","Alto","Muito Alto","Altíssimo","Moderado","Alto","Muito Alto","Altíssimo"],[20,42.72,70.62,109.53,16.88,34.42,55.76,85.34999999999999,20.58,44.8,74.63,116.32,19.06,40.98,68.06,105.99,25.81,53.22,86.94,134.05,21.85,44.2,71.37,109],[18.69,41.56,71.25,114.15,16.38,33,54.24,84.75,20.69,44.41,74.83,118.46,18.22,39.86,68.26000000000001,109.67,25.63,52.15,85.68000000000001,133.46,20.95,43.48,72.28,113.58]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th>Estacao<\/th>\n      <th>Nivel<\/th>\n      <th>Limiar (Reajustado)<\/th>\n      <th>Limiar (Original RDS)<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"dom":"t","columnDefs":[{"className":"dt-right","targets":[2,3]},{"name":"Estacao","targets":0},{"name":"Nivel","targets":1},{"name":"Limiar (Reajustado)","targets":2},{"name":"Limiar (Original RDS)","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+</section>
+<section id="gráfico-comparativo" class="level4">
+<h4 class="anchored" data-anchor-id="gráfico-comparativo">Gráfico Comparativo</h4>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplotly</span>(p, <span class="at">tooltip =</span> <span class="st">"text"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div class="plotly html-widget html-fill-item" id="htmlwidget-5993378d05f210416e76" style="width:100%;height:464px;"></div>
+<script type="application/json" data-for="htmlwidget-5993378d05f210416e76">{"x":{"data":[{"orientation":"v","width":[0.44999999999999996,0.45000000000000018,0.45000000000000018,0.45000000000000018],"base":[0,0,0,0],"x":[0.77500000000000002,1.7749999999999999,2.7749999999999999,3.7749999999999999],"y":[18.68522691240544,41.564054268119015,71.254223018954093,114.15350987734945],"text":["Estação: BENTO GONCALVES <br>Método: Limiar (Original RDS) <br>Nível: Moderado <br>Limiar: 18.69 mm","Estação: BENTO GONCALVES <br>Método: Limiar (Original RDS) <br>Nível: Alto <br>Limiar: 41.56 mm","Estação: BENTO GONCALVES <br>Método: Limiar (Original RDS) <br>Nível: Muito Alto <br>Limiar: 71.25 mm","Estação: BENTO GONCALVES <br>Método: Limiar (Original RDS) <br>Nível: Altíssimo <br>Limiar: 114.15 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(248,118,109,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Original RDS)","legendgroup":"Limiar (Original RDS)","showlegend":true,"xaxis":"x","yaxis":"y","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.44999999999999996,0.45000000000000018,0.45000000000000018,0.45000000000000018],"base":[0,0,0,0],"x":[0.77500000000000002,1.7749999999999999,2.7749999999999999,3.7749999999999999],"y":[18.224952684631251,39.855401796179649,68.260133346992717,109.67423636538145],"text":["Estação: CAMBARA DO SUL <br>Método: Limiar (Original RDS) <br>Nível: Moderado <br>Limiar: 18.22 mm","Estação: CAMBARA DO SUL <br>Método: Limiar (Original RDS) <br>Nível: Alto <br>Limiar: 39.86 mm","Estação: CAMBARA DO SUL <br>Método: Limiar (Original RDS) <br>Nível: Muito Alto <br>Limiar: 68.26 mm","Estação: CAMBARA DO SUL <br>Método: Limiar (Original RDS) <br>Nível: Altíssimo <br>Limiar: 109.67 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(248,118,109,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Original RDS)","legendgroup":"Limiar (Original RDS)","showlegend":false,"xaxis":"x2","yaxis":"y2","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.44999999999999996,0.45000000000000018,0.45000000000000018,0.45000000000000018],"base":[0,0,0,0],"x":[0.77500000000000002,1.7749999999999999,2.7749999999999999,3.7749999999999999],"y":[25.632927918589388,52.146375527026976,85.683193778760256,133.45534965650799],"text":["Estação: CANELA <br>Método: Limiar (Original RDS) <br>Nível: Moderado <br>Limiar: 25.63 mm","Estação: CANELA <br>Método: Limiar (Original RDS) <br>Nível: Alto <br>Limiar: 52.15 mm","Estação: CANELA <br>Método: Limiar (Original RDS) <br>Nível: Muito Alto <br>Limiar: 85.68 mm","Estação: CANELA <br>Método: Limiar (Original RDS) <br>Nível: Altíssimo <br>Limiar: 133.46 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(248,118,109,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Original RDS)","legendgroup":"Limiar (Original RDS)","showlegend":false,"xaxis":"x3","yaxis":"y3","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.44999999999999996,0.45000000000000018,0.45000000000000018,0.45000000000000018],"base":[0,0,0,0],"x":[0.77500000000000002,1.7749999999999999,2.7749999999999999,3.7749999999999999],"y":[16.381439914545446,32.998978198337454,54.240885619122189,84.748795996169889],"text":["Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Original RDS) <br>Nível: Moderado <br>Limiar: 16.38 mm","Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Original RDS) <br>Nível: Alto <br>Limiar: 33 mm","Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Original RDS) <br>Nível: Muito Alto <br>Limiar: 54.24 mm","Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Original RDS) <br>Nível: Altíssimo <br>Limiar: 84.75 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(248,118,109,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Original RDS)","legendgroup":"Limiar (Original RDS)","showlegend":false,"xaxis":"x","yaxis":"y4","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.44999999999999996,0.45000000000000018,0.45000000000000018,0.45000000000000018],"base":[0,0,0,0],"x":[0.77500000000000002,1.7749999999999999,2.7749999999999999,3.7749999999999999],"y":[20.94673812292223,43.475173505991748,72.275105220927287,113.57670948107109],"text":["Estação: TEUTONIA <br>Método: Limiar (Original RDS) <br>Nível: Moderado <br>Limiar: 20.95 mm","Estação: TEUTONIA <br>Método: Limiar (Original RDS) <br>Nível: Alto <br>Limiar: 43.48 mm","Estação: TEUTONIA <br>Método: Limiar (Original RDS) <br>Nível: Muito Alto <br>Limiar: 72.28 mm","Estação: TEUTONIA <br>Método: Limiar (Original RDS) <br>Nível: Altíssimo <br>Limiar: 113.58 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(248,118,109,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Original RDS)","legendgroup":"Limiar (Original RDS)","showlegend":false,"xaxis":"x2","yaxis":"y5","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.44999999999999996,0.45000000000000018,0.45000000000000018,0.45000000000000018],"base":[0,0,0,0],"x":[0.77500000000000002,1.7749999999999999,2.7749999999999999,3.7749999999999999],"y":[20.694522122794041,44.414460433983258,74.825359869836632,118.4633347830552],"text":["Estação: VACARIA <br>Método: Limiar (Original RDS) <br>Nível: Moderado <br>Limiar: 20.69 mm","Estação: VACARIA <br>Método: Limiar (Original RDS) <br>Nível: Alto <br>Limiar: 44.41 mm","Estação: VACARIA <br>Método: Limiar (Original RDS) <br>Nível: Muito Alto <br>Limiar: 74.83 mm","Estação: VACARIA <br>Método: Limiar (Original RDS) <br>Nível: Altíssimo <br>Limiar: 118.46 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(248,118,109,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Original RDS)","legendgroup":"Limiar (Original RDS)","showlegend":false,"xaxis":"x3","yaxis":"y6","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.45000000000000018,0.45000000000000018,0.45000000000000018,0.44999999999999973],"base":[0,0,0,0],"x":[1.2250000000000001,2.2250000000000001,3.2250000000000001,4.2249999999999996],"y":[19.99845233278722,42.719797278293591,70.621312799190989,109.53056174419562],"text":["Estação: BENTO GONCALVES <br>Método: Limiar (Reajustado) <br>Nível: Moderado <br>Limiar: 20 mm","Estação: BENTO GONCALVES <br>Método: Limiar (Reajustado) <br>Nível: Alto <br>Limiar: 42.72 mm","Estação: BENTO GONCALVES <br>Método: Limiar (Reajustado) <br>Nível: Muito Alto <br>Limiar: 70.62 mm","Estação: BENTO GONCALVES <br>Método: Limiar (Reajustado) <br>Nível: Altíssimo <br>Limiar: 109.53 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(0,191,196,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Reajustado)","legendgroup":"Limiar (Reajustado)","showlegend":true,"xaxis":"x","yaxis":"y","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.45000000000000018,0.45000000000000018,0.45000000000000018,0.44999999999999973],"base":[0,0,0,0],"x":[1.2250000000000001,2.2250000000000001,3.2250000000000001,4.2249999999999996],"y":[19.055949369460635,40.977314483246282,68.064673516322699,105.98773591515391],"text":["Estação: CAMBARA DO SUL <br>Método: Limiar (Reajustado) <br>Nível: Moderado <br>Limiar: 19.06 mm","Estação: CAMBARA DO SUL <br>Método: Limiar (Reajustado) <br>Nível: Alto <br>Limiar: 40.98 mm","Estação: CAMBARA DO SUL <br>Método: Limiar (Reajustado) <br>Nível: Muito Alto <br>Limiar: 68.06 mm","Estação: CAMBARA DO SUL <br>Método: Limiar (Reajustado) <br>Nível: Altíssimo <br>Limiar: 105.99 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(0,191,196,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Reajustado)","legendgroup":"Limiar (Reajustado)","showlegend":false,"xaxis":"x2","yaxis":"y2","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.45000000000000018,0.45000000000000018,0.45000000000000018,0.44999999999999973],"base":[0,0,0,0],"x":[1.2250000000000001,2.2250000000000001,3.2250000000000001,4.2249999999999996],"y":[25.814792215161898,53.215426477270583,86.93915959281648,134.04933223605565],"text":["Estação: CANELA <br>Método: Limiar (Reajustado) <br>Nível: Moderado <br>Limiar: 25.81 mm","Estação: CANELA <br>Método: Limiar (Reajustado) <br>Nível: Alto <br>Limiar: 53.22 mm","Estação: CANELA <br>Método: Limiar (Reajustado) <br>Nível: Muito Alto <br>Limiar: 86.94 mm","Estação: CANELA <br>Método: Limiar (Reajustado) <br>Nível: Altíssimo <br>Limiar: 134.05 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(0,191,196,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Reajustado)","legendgroup":"Limiar (Reajustado)","showlegend":false,"xaxis":"x3","yaxis":"y3","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.45000000000000018,0.45000000000000018,0.45000000000000018,0.44999999999999973],"base":[0,0,0,0],"x":[1.2250000000000001,2.2250000000000001,3.2250000000000001,4.2249999999999996],"y":[16.88282794705373,34.419509430464998,55.761537041523091,85.35394676948458],"text":["Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Reajustado) <br>Nível: Moderado <br>Limiar: 16.88 mm","Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Reajustado) <br>Nível: Alto <br>Limiar: 34.42 mm","Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Reajustado) <br>Nível: Muito Alto <br>Limiar: 55.76 mm","Estação: SAO JOSE DOS AUSENTES <br>Método: Limiar (Reajustado) <br>Nível: Altíssimo <br>Limiar: 85.35 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(0,191,196,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Reajustado)","legendgroup":"Limiar (Reajustado)","showlegend":false,"xaxis":"x","yaxis":"y4","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.45000000000000018,0.45000000000000018,0.45000000000000018,0.44999999999999973],"base":[0,0,0,0],"x":[1.2250000000000001,2.2250000000000001,3.2250000000000001,4.2249999999999996],"y":[21.845437943159848,44.203170007169234,71.370336704417213,109.00250151997201],"text":["Estação: TEUTONIA <br>Método: Limiar (Reajustado) <br>Nível: Moderado <br>Limiar: 21.85 mm","Estação: TEUTONIA <br>Método: Limiar (Reajustado) <br>Nível: Alto <br>Limiar: 44.2 mm","Estação: TEUTONIA <br>Método: Limiar (Reajustado) <br>Nível: Muito Alto <br>Limiar: 71.37 mm","Estação: TEUTONIA <br>Método: Limiar (Reajustado) <br>Nível: Altíssimo <br>Limiar: 109 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(0,191,196,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Reajustado)","legendgroup":"Limiar (Reajustado)","showlegend":false,"xaxis":"x2","yaxis":"y5","hoverinfo":"text","frame":null},{"orientation":"v","width":[0.45000000000000018,0.45000000000000018,0.45000000000000018,0.44999999999999973],"base":[0,0,0,0],"x":[1.2250000000000001,2.2250000000000001,3.2250000000000001,4.2249999999999996],"y":[20.581908088175958,44.79648913846728,74.630808298801554,116.32258144951892],"text":["Estação: VACARIA <br>Método: Limiar (Reajustado) <br>Nível: Moderado <br>Limiar: 20.58 mm","Estação: VACARIA <br>Método: Limiar (Reajustado) <br>Nível: Alto <br>Limiar: 44.8 mm","Estação: VACARIA <br>Método: Limiar (Reajustado) <br>Nível: Muito Alto <br>Limiar: 74.63 mm","Estação: VACARIA <br>Método: Limiar (Reajustado) <br>Nível: Altíssimo <br>Limiar: 116.32 mm"],"type":"bar","textposition":"none","marker":{"autocolorscale":false,"color":"rgba(0,191,196,1)","line":{"width":1.8897637795275593,"color":"transparent"}},"name":"Limiar (Reajustado)","legendgroup":"Limiar (Reajustado)","showlegend":false,"xaxis":"x3","yaxis":"y6","hoverinfo":"text","frame":null}],"layout":{"margin":{"t":52.529680365296812,"r":7.3059360730593621,"b":42.270709150988566,"l":37.260273972602747},"paper_bgcolor":"rgba(255,255,255,1)","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724},"title":{"text":"Comparação de Limiares (mm) por Estação","font":{"color":"rgba(0,0,0,1)","family":"","size":17.534246575342465},"x":0,"xref":"paper"},"xaxis":{"domain":[0,0.31947162426614478],"automargin":true,"type":"linear","autorange":false,"range":[0.40000000000000002,4.5999999999999996],"tickmode":"array","ticktext":["Moderado","Alto","Muito Alto","Altíssimo"],"tickvals":[1,2,3,4],"categoryorder":"array","categoryarray":["Moderado","Alto","Muito Alto","Altíssimo"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-45,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"y4","title":"","hoverformat":".2f"},"yaxis":{"domain":[0.51484018264840181,1],"automargin":true,"type":"linear","autorange":false,"range":[-5.7076754938674732,119.86118537121692],"tickmode":"array","ticktext":["0","30","60","90"],"tickvals":[0,29.999999999999996,60,90],"categoryorder":"array","categoryarray":["0","30","60","90"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x","title":"","hoverformat":".2f"},"annotations":[{"text":"Chuva Acumulada (mm)","x":0,"y":0.5,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724},"xref":"paper","yref":"paper","textangle":-90,"xanchor":"right","yanchor":"center","annotationType":"axis","xshift":-21.917808219178081},{"text":"BENTO GONCALVES","x":0.15973581213307239,"y":1,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(26,26,26,1)","family":"","size":11.68949771689498},"xref":"paper","yref":"paper","textangle":-0,"xanchor":"center","yanchor":"bottom"},{"text":"CAMBARA DO SUL","x":0.5,"y":1,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(26,26,26,1)","family":"","size":11.68949771689498},"xref":"paper","yref":"paper","textangle":-0,"xanchor":"center","yanchor":"bottom"},{"text":"CANELA","x":0.84026418786692758,"y":1,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(26,26,26,1)","family":"","size":11.68949771689498},"xref":"paper","yref":"paper","textangle":-0,"xanchor":"center","yanchor":"bottom"},{"text":"SAO JOSE DOS AUSENTES","x":0.15973581213307239,"y":0.48515981735159819,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(26,26,26,1)","family":"","size":11.68949771689498},"xref":"paper","yref":"paper","textangle":-0,"xanchor":"center","yanchor":"bottom"},{"text":"TEUTONIA","x":0.5,"y":0.48515981735159819,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(26,26,26,1)","family":"","size":11.68949771689498},"xref":"paper","yref":"paper","textangle":-0,"xanchor":"center","yanchor":"bottom"},{"text":"VACARIA","x":0.84026418786692758,"y":0.48515981735159819,"showarrow":false,"ax":0,"ay":0,"font":{"color":"rgba(26,26,26,1)","family":"","size":11.68949771689498},"xref":"paper","yref":"paper","textangle":-0,"xanchor":"center","yanchor":"bottom"}],"shapes":[{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","layer":"below","x0":0,"x1":0.31947162426614478,"y0":0,"y1":23.37899543378996,"yanchor":1,"ysizemode":"pixel"},{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","layer":"below","x0":0.34719504240052185,"x1":0.6528049575994781,"y0":0,"y1":23.37899543378996,"yanchor":1,"ysizemode":"pixel"},{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","layer":"below","x0":0.68052837573385516,"x1":1,"y0":0,"y1":23.37899543378996,"yanchor":1,"ysizemode":"pixel"},{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","layer":"below","x0":0,"x1":0.31947162426614478,"y0":0,"y1":23.37899543378996,"yanchor":0.48515981735159819,"ysizemode":"pixel"},{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","layer":"below","x0":0.34719504240052185,"x1":0.6528049575994781,"y0":0,"y1":23.37899543378996,"yanchor":0.48515981735159819,"ysizemode":"pixel"},{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","layer":"below","x0":0.68052837573385516,"x1":1,"y0":0,"y1":23.37899543378996,"yanchor":0.48515981735159819,"ysizemode":"pixel"}],"xaxis2":{"type":"linear","autorange":false,"range":[0.40000000000000002,4.5999999999999996],"tickmode":"array","ticktext":["Moderado","Alto","Muito Alto","Altíssimo"],"tickvals":[1,2,3,4],"categoryorder":"array","categoryarray":["Moderado","Alto","Muito Alto","Altíssimo"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-45,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0.34719504240052185,0.6528049575994781],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"y5","title":"","hoverformat":".2f"},"yaxis2":{"type":"linear","autorange":false,"range":[-5.4837118182690725,115.15794818365052],"tickmode":"array","ticktext":["0","30","60","90"],"tickvals":[0,30,60,90],"categoryorder":"array","categoryarray":["0","30","60","90"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0.51484018264840181,1],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x2","title":"","hoverformat":".2f"},"xaxis3":{"type":"linear","autorange":false,"range":[0.40000000000000002,4.5999999999999996],"tickmode":"array","ticktext":["Moderado","Alto","Muito Alto","Altíssimo"],"tickvals":[1,2,3,4],"categoryorder":"array","categoryarray":["Moderado","Alto","Muito Alto","Altíssimo"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-45,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0.68052837573385516,1],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"y6","title":"","hoverformat":".2f"},"yaxis3":{"type":"linear","autorange":false,"range":[-6.7024666118027829,140.75179884785842],"tickmode":"array","ticktext":["0","50","100"],"tickvals":[0,50,100],"categoryorder":"array","categoryarray":["0","50","100"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0.51484018264840181,1],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x3","title":"","hoverformat":".2f"},"yaxis4":{"type":"linear","autorange":false,"range":[-4.2676973384742292,89.621644107958815],"tickmode":"array","ticktext":["0","20","40","60","80"],"tickvals":[0,20,40,60.000000000000007,80],"categoryorder":"array","categoryarray":["0","20","40","60","80"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0,0.48515981735159819],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x","title":"","hoverformat":".2f"},"yaxis5":{"type":"linear","autorange":false,"range":[-5.6788354740535549,119.25554495512465],"tickmode":"array","ticktext":["0","30","60","90"],"tickvals":[0,30,60,90],"categoryorder":"array","categoryarray":["0","30","60","90"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0,0.48515981735159819],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x2","title":"","hoverformat":".2f"},"yaxis6":{"type":"linear","autorange":false,"range":[-5.9231667391527605,124.38650152220796],"tickmode":"array","ticktext":["0","30","60","90","120"],"tickvals":[0,30,60,90,120],"categoryorder":"array","categoryarray":["0","30","60","90","120"],"nticks":null,"ticks":"","tickcolor":null,"ticklen":3.6529680365296811,"tickwidth":0,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"domain":[0,0.48515981735159819],"gridcolor":"rgba(235,235,235,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x3","title":"","hoverformat":".2f"},"showlegend":true,"legend":{"bgcolor":null,"bordercolor":null,"borderwidth":0,"font":{"color":"rgba(0,0,0,1)","family":"","size":11.68949771689498},"orientation":"h","x":0.5,"y":-0.14999999999999999,"xanchor":"center","yanchor":"top","title":{"text":"","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}}},"hovermode":"closest","barmode":"relative"},"config":{"doubleClick":"reset","modeBarButtonsToAdd":["hoverclosest","hovercompare"],"showSendToCloud":false},"source":"A","attrs":{"1d48625c1f10e7":{"x":{},"y":{},"fill":{},"text":{},"type":"bar"}},"cur_data":"1d48625c1f10e7","visdat":{"1d48625c1f10e7":["function (y) ","x"]},"highlight":{"on":"plotly_click","persistent":false,"dynamic":false,"selectize":false,"opacityDim":0.20000000000000001,"selected":{"opacity":1},"debounce":0},"shinyEvents":["plotly_hover","plotly_click","plotly_selected","plotly_relayout","plotly_brushed","plotly_brushing","plotly_clickannotation","plotly_doubleclick","plotly_deselect","plotly_afterplot","plotly_sunburstclick"],"base_url":"https://plot.ly"},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="planejamento-e-próximos-passos" class="level3">
+<h3 class="anchored" data-anchor-id="planejamento-e-próximos-passos">4. Planejamento e Próximos Passos</h3>
+<p>A análise do processo atual levanta questões importantes para a evolução do sistema de alertas.</p>
+<ul>
+<li><p><strong>Separação de Processos (Treinamento vs.&nbsp;Cálculo)</strong>: É recomendável desacoplar o treinamento do modelo (geração de parâmetros, que pode rodar com baixa frequência) do cálculo de limiares (que consome os parâmetros e roda conforme a necessidade). <em>Isso traria mais robustez e manutenibilidade?</em></p></li>
+<li><p><strong>Automatização para Novas Estações</strong>: A prática de “emprestar” parâmetros é uma solução paliativa. Um fluxo automatizado para calcular parâmetros para novas estações, assim que tiverem dados suficientes, aumentaria a precisão dos alertas locais. <em>É viável e benéfico?</em></p></li>
+<li><p><strong>Monitoramento da Qualidade dos Dados</strong>: A precisão do modelo depende da qualidade dos dados de entrada. Falhas de coleta (<code>SSL_ERROR_RX_RECORD_TOO_LONG</code>) são um ponto de atenção que precisa ser tratado. <em>Como garantir a estabilidade e qualidade da coleta de dados?</em></p></li>
+</ul>
+<p><strong>Proposta de Estrutura para o Novo Repositório:</strong></p>
+<pre><code>/repositorio-limiares/
+├── dados/
+│   ├── historico/
+│   └── parametros/
+│       └── tb_params_atual.rds
+├── R/
+│   ├── 01_processo_treinamento.R
+│   └── 02_processo_calculo.R
+├── relatorios/
+│   └── dashboard_limiares.Rmd
+└── README.md</code></pre>
+<p>Para utilizar este dashboard, você precisará ter o pacote <code>flexdashboard</code> instalado em seu ambiente R (<code>install.packages("flexdashboard")</code>). Depois, basta abrir o arquivo <code>dashboard_limiares.Rmd</code> no RStudio e clicar em “Run Document”.</p>
+<p>&lt;!– [PROMPT_SUGGESTION]Como posso adicionar um novo painel ao dashboard para visualizar a distribuição dos dados de chuva simulados?[/PROMPT_SUGGESTION] [PROMPT_SUGGESTION]Transforme a seção “Planejamento e Próximos Passos” em uma nova página no dashboard, em vez de uma seção na mesma coluna.[/PROMPT_SUGGESTION]</p>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

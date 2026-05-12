@@ -1,0 +1,165 @@
+---
+title: "Relatório Técnico: Metodologia de Cálculo de Limiares de Alerta"
+author: "Análise de Código e Processo"
+date: "2026-05-07"
+output: 
+  pdf_document:
+    toc: yes
+    number_sections: yes
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{geometry}
+  - \geometry{a4paper, margin=1in}
+---
+
+```{r setup, echo=TRUE, message=TRUE, warning=FALSE}
+# ==============================================================================
+# 0. Carregamento de Pacotes e Configurações Iniciais
+# ==============================================================================
+# Limpa o ambiente de trabalho
+rm(list = ls())
+
+# Carregando pacotes necessários
+library(flexdashboard)
+library(tidyverse)
+library(tweedie)
+library(statmod) # Necessário para a família tweedie no glm
+library(plotly)
+library(DT)
+
+# --- Configuração de Caminhos e Parâmetros ---
+source("/home/thiago/calculo_limiares/R/funcoes_calculo.R")
+data_path <- "/home/thiago/calculo_limiares/dados/parametros/"
+cuts <- c(0.65, 0.85, 0.95, 0.99)
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### 1. Visão Geral e Metodologia
+
+**Introdução**
+
+Este dashboard descreve o processo de cálculo dos limiares de chuva acumulada (em mm) utilizados para a emissão de alertas de risco de deslizamento. O objetivo é consolidar o conhecimento sobre a metodologia, os dados envolvidos e os resultados gerados, servindo como base para a evolução do sistema.
+
+**Mapeamento de Dados**
+
+O processo depende das seguintes fontes:
+
+*   **Parâmetros Pré-calculados**: Arquivo `tb_params_automatico.rds` contendo os parâmetros (`mu`, `phi`, `power`) da distribuição Tweedie para diversas estações.
+*   **Dados de Novas Estações**: Estações sem parâmetros pré-definidos (`Veranópolis`, `Barão`, etc.) utilizam os parâmetros da estação `"BENTO GONCALVES"` como aproximação.
+*   **Dados Históricos**: Coletados de fontes como o INMET. A qualidade destes dados é fundamental para a precisão do modelo.
+
+**Metodologia Estatística: Distribuição Tweedie**
+
+O pilar do cálculo é a **distribuição Tweedie**, ideal para modelar dados de precipitação, pois lida com valores **zero** (dias sem chuva) e **contínuos positivos** (dias com chuva).
+
+O script consome os parâmetros pré-calculados e utiliza a **função quantílica** (`tweedie::qtweedie`) para encontrar os valores de chuva que correspondem aos seguintes percentis (`cuts`):
+
+-   **65%**: Limiar "Moderado"
+-   **85%**: Limiar "Alto"
+-   **95%**: Limiar "Muito Alto"
+-   **99%**: Limiar "Altíssimo"
+
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### 2. Limiares por Estação (Acumulado 96h)
+
+```{r calculo_limiares, echo=FALSE, message=FALSE, warning=FALSE}
+# Lendo os parâmetros gerados pelo nosso script de treinamento!
+arquivo_params <- paste0(data_path, "tb_params_atual.rds")
+
+if (file.exists(arquivo_params)) {
+  tb_params_ativos <- readRDS(arquivo_params) |> as_tibble()
+  
+  # Calcula os limiares matematicamente para a visualização
+  limiares_por_estacao <- tb_params_ativos %>%
+    rowwise() %>%
+    mutate(
+      `Moderado (65%)` = tweedie::qtweedie(0.65, mu = mu, phi = phi, power = power),
+      `Alto (85%)`     = tweedie::qtweedie(0.85, mu = mu, phi = phi, power = power),
+      `Muito Alto (95%)`= tweedie::qtweedie(0.95, mu = mu, phi = phi, power = power),
+      `Altíssimo (99%)`= tweedie::qtweedie(0.99, mu = mu, phi = phi, power = power)
+    ) %>%
+    select(Estacao = station, starts_with("Moderado"), starts_with("Alto"), starts_with("Muito"), starts_with("Altíssimo")) %>%
+    ungroup() %>%
+    arrange(Estacao)
+    
+  datatable(limiares_por_estacao %>% mutate(across(where(is.numeric), ~round(., 2))),
+            options = list(pageLength = 10, dom = 'ft'),
+            rownames = FALSE,
+            filter = 'top',
+            caption = "Tabela interativa com os limiares treinados (Baseados no Método Matemático Rápido).")
+} else {
+  cat("⚠️ Banco de parâmetros não encontrado. Execute o script R/01_processo_treinamento.R para gerá-lo.")
+}
+```
+
+---
+
+### 3. Geração de Parâmetros e Comparativo
+
+Abaixo demonstramos, em tempo real, a diferença entre extrair os limiares utilizando os algoritmos originais do `pacote` e utilizando a solução exata do `método matemático`.
+
+```{r geracao_parametros, echo=FALSE, message=FALSE, warning=FALSE}
+estacao_teste <- "BENTO GONCALVES"
+
+# Calcula usando nossa nova função e o Método Matemático Fechado (Exato)
+resultado_matematico <- suppressMessages(
+  calcular_limiares_estacao(nome_estacao = estacao_teste, metodo_ajuste = "matematico")
+)
+
+# Calcula usando nossa nova função e a iteração pesada via pacote tweedie
+resultado_pacote <- suppressMessages(
+  calcular_limiares_estacao(nome_estacao = estacao_teste, metodo_ajuste = "pacote")
+)
+
+# Juntando os dados para comparar
+tabela_comparativa <- bind_rows(
+  resultado_matematico$limiares %>% mutate(Metodo = "Matemático (Exato)"),
+  resultado_pacote$limiares %>% mutate(Metodo = "Pacote GLM (Iterativo)")
+) %>% mutate(Estacao = estacao_teste)
+
+tabela_comparativa$Nivel <- factor(tabela_comparativa$Nivel, 
+                                   levels = c("Moderado", "Alto", "Muito Alto", "Altíssimo"))
+```
+
+#### Gráfico Comparativo
+
+Como podemos observar no gráfico interativo abaixo, os limiares apontam para valores idênticos ou extremamente semelhantes. Isso valida a utilização do **Método Matemático**, que processa as estações instantaneamente.
+
+```{r grafico_comparativo, echo=FALSE, message=FALSE, warning=FALSE}
+p <- ggplot(tabela_comparativa, aes(x = Nivel, y = Limiar_mm, fill = Metodo,
+                         text = paste("Estação:", Estacao, 
+                                      "<br>Método:", Metodo, 
+                                      "<br>Nível:", Nivel, 
+                                      "<br>Limiar:", round(Limiar_mm, 2), "mm"))) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.6) +
+  scale_fill_manual(values = c("Matemático (Exato)" = "#2c3e50", "Pacote GLM (Iterativo)" = "#e74c3c")) +
+  labs(title = paste("Limiares Extraídos - Comparação de Motores Estatísticos:", estacao_teste), 
+       x = "Nível de Alerta (Quantil)", y = "Acumulado 96h (mm)", fill = "Motor") +
+  theme_minimal() +
+  theme(legend.position="bottom", 
+        plot.title = element_text(face = "bold"),
+        axis.text.x = element_text(size = 11, face = "bold"))
+
+ggplotly(p, tooltip = "text")
+```
+
+---
+
+### 4. Planejamento e Próximos Passos
+
+O sistema atualizou com sucesso a sua arquitetura saindo de "scripts ad-hoc" com parâmetros mágicos, para uma pipeline (ETL) reprodutível partindo dos dados originais do INMET. 
+
+**Próximas Tarefas do Projeto:**
+
+1.  **Criação da API (`plumber`)**: Criar o script `api.R` que irá escutar requisições web. Ao receber um GET `/limiares?lat=-28.93&lon=-51.55` (ex: Veranópolis), ele acionará a função `calcular_limiares_estacao()`, encontrará os parâmetros de Bento Gonçalves e devolverá um JSON limpo com os alertas moderado/alto/altíssimo para o município alvo.
+2.  **Agendamento do Treinamento**: Configurar um `cronjob` (Linux) ou `GitHub Actions` para rodar mensalmente o script `01_processo_treinamento.R`. Como ele utiliza o novo motor matemático, a extração de métricas dezenas de novas pastas será concluída de forma assíncrona em segundos.
+3.  **Transição Dinâmica de Estações do Cemaden**: Como a função já busca por coordenadas (Haversine), à medida em que a prefeitura coletar anos suficientes de chuva em suas estações locais próprias (e.g., Barão), podemos integrá-las aos diretórios inmet\_brutos. A função deixará de "emprestar" parâmetros do vizinho e fará a conta real assim que o acúmulo da série temporal atingir significância.
+
+<!--
+[PROMPT_SUGGESTION]Como posso adicionar um novo painel ao dashboard para visualizar a distribuição dos dados de chuva simulados?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Transforme a seção "Planejamento e Próximos Passos" em uma nova página no dashboard, em vez de uma seção na mesma coluna.[/PROMPT_SUGGESTION]

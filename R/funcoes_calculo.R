@@ -147,6 +147,17 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
   y <- dados_diarios$chuva_acumulada_96h
   if (all(y == 0) || length(unique(y)) < 2) stop("Dados insuficientes de precipitação na estação.")
   
+  # Extração de Metadados (Tratamento de formato de datas de estações antigas e novas)
+  datas_validas <- suppressWarnings(lubridate::parse_date_time(dados$Data, orders = c("ymd", "dmy", "Ymd", "dmY")))
+  if (all(is.na(datas_validas))) {
+    data_inicio <- NA; data_fim <- NA
+  } else {
+    data_inicio <- format(min(datas_validas, na.rm = TRUE), "%d/%m/%Y")
+    data_fim <- format(max(datas_validas, na.rm = TRUE), "%d/%m/%Y")
+  }
+  n_dados <- nrow(dados)
+  n_ausentes <- sum(is.na(dados$Precipitacao))
+
   # 4. Ajustar Tweedie e Extrair Limiares
   if (metodo_ajuste == "matematico") {
     message("=> Calculando parâmetros da distribuição Tweedie (Método Matemático)...")
@@ -173,5 +184,8 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
   limiares_mm <- tweedie::qtweedie(cuts, mu = mu_otimo, phi = phi_otimo, power = p_otimo)
   
   message("=> Concluído!")
-  return(list(estacao = estacao_alvo$estacao, distancia_km = round(distancia_km, 2), params = list(mu = unname(mu_otimo), phi = phi_otimo, power = p_otimo), limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = cuts, Limiar_mm = round(limiares_mm, 2))))
+  return(list(estacao = estacao_alvo$estacao, distancia_km = round(distancia_km, 2), 
+              metadata = list(data_inicio = data_inicio, data_fim = data_fim, n_dados = n_dados, n_ausentes = n_ausentes),
+              params = list(mu = unname(mu_otimo), phi = phi_otimo, power = p_otimo), 
+              limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = cuts, Limiar_mm = round(limiares_mm, 2))))
 }

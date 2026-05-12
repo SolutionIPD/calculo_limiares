@@ -1,0 +1,11 @@
+# Histórico e arquivos temporários do R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Diretórios de dados brutos (Ignorar todos os arquivos dentro para não pesar o Git)
+dados/inmet_brutos/*
+
+# Exceção: Manter um arquivo vazio para o Git criar a pasta 'inmet_brutos' vazia no repositório remoto
+!dados/inmet_brutos/.gitkeep

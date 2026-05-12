@@ -128,6 +128,8 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
                        show_col_types = FALSE, name_repair = "minimal"))
       df <- df[, 1:3] # Pega apenas as colunas essenciais: Data, Hora UTC e Precipitação
       colnames(df) <- c("Data", "Hora", "Precipitacao")
+      df$Data <- as.character(df$Data)
+      df$Hora <- as.character(df$Hora)
       df$Precipitacao <- as.numeric(df$Precipitacao)
       df$Precipitacao[df$Precipitacao < 0] <- NA # Limpa falhas de sensor
       df

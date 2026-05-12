@@ -5,7 +5,6 @@ utils
 grDevices
 graphics
 stats
-flexdashboard
 tidyverse
 ggplot2
 tibble
@@ -20,3 +19,4 @@ tweedie
 statmod
 plotly
 DT
+knitr

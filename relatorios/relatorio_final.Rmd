@@ -20,12 +20,12 @@ header-includes:
 rm(list = ls())
 
 # Carregando pacotes necessários
-library(flexdashboard)
 library(tidyverse)
 library(tweedie)
 library(statmod) # Necessário para a família tweedie no glm
 library(plotly)
 library(DT)
+library(knitr)
 
 # --- Configuração de Caminhos e Parâmetros ---
 source("/home/thiago/calculo_limiares/R/funcoes_calculo.R")
@@ -68,7 +68,93 @@ Column {data-width=650}
 
 ### 3. Tabela Completa de Estações (Método Matemático)
 
-```{r calculo_limiares, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
++# Expande a tabela para ocupar 100% da largura do navegador
++#| column: page
++
+# Utilizando o nosso motor matemático, o relatório varre todos os dados brutos e recalcula
+# as métricas e limiares de todo o Rio Grande do Sul na hora com eficiência máxima!
+meta <- obter_metadados_estacoes(dir_brutos)
+@@ -77,14 +73,14 @@
+}) %>% arrange(Estação)
+
+datatable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
+-          options = list(pageLength = 15, dom = 'Bfrtip', scrollX = TRUE),
++          options = list(pageLength = 15, dom = 'Bfrtip', autoWidth = TRUE),
+          rownames = FALSE,
+          filter = 'top',
+          caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
++# Expande a tabela para ocupar 100% da largura do navegador
++#| column: page
++
+# Utilizando o nosso motor matemático, o relatório varre todos os dados brutos e recalcula
+# as métricas e limiares de todo o Rio Grande do Sul na hora com eficiência máxima!
+meta <- obter_metadados_estacoes(dir_brutos)
+@@ -77,14 +73,14 @@
+}) %>% arrange(Estação)
+
+datatable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
+-          options = list(pageLength = 15, dom = 'Bfrtip', scrollX = TRUE),
++          options = list(pageLength = 15, dom = 'Bfrtip', autoWidth = TRUE),
+          rownames = FALSE,
+          filter = 'top',
+          caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+
+Pode salvar e dar o `quarto preview`! A sua tabela de estações vai se espalhar por todo o espaço útil da janela do seu navegador e a barra de rolagem horizontal chata vai sumir, com as colunas se ajustando automaticamente!
+
+<!--
+[PROMPT_SUGGESTION]A tabela ficou perfeita e usou toda a tela! Como faço para hospedar/deployar essa API R (Plumber) no servidor agora?[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Dashboard tá 10/10. Vamos agendar a automação do `01_processo_treinamento.R` usando cron?[/PROMPT_SUGGESTION]
+-->
+```{r calculo_limiares, echo=FALSE, message=FALSE, warning=FALSE}
 # Utilizando o nosso motor matemático, o relatório varre todos os dados brutos e recalcula
 # as métricas e limiares de todo o Rio Grande do Sul na hora com eficiência máxima!
 meta <- obter_metadados_estacoes(dir_brutos)
@@ -91,11 +177,18 @@ tabela_completa <- purrr::map_dfr(lista_estacoes, function(est) {
   }, error = function(e) NULL)
 }) %>% arrange(Estação)
 
-datatable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
-          options = list(pageLength = 15, dom = 'Bfrtip', scrollX = TRUE),
-          rownames = FALSE,
-          filter = 'top',
-          caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
+if (knitr::is_latex_output()) {
+  # Para PDF: Usa uma tabela estática clássica
+  kable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
+        caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
+} else {
+  # Para HTML: Usa a tabela interativa do DT
+  datatable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
+            options = list(pageLength = 15, dom = 'Bfrtip', autoWidth = TRUE),
+            rownames = FALSE,
+            filter = 'top',
+            caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
+}
 ```
 
 ---
@@ -104,7 +197,7 @@ datatable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
 
 Abaixo demonstramos, em tempo real, a diferença entre extrair os limiares utilizando os algoritmos originais do `pacote` e utilizando a solução exata do `método matemático`.
 
-```{r geracao_parametros, echo=FALSE, message=FALSE, warning=FALSE}
+```{r geracao_parametros, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
 estacao_teste <- "BENTO GONCALVES"
 
 # Calcula usando nossa nova função e o Método Matemático Fechado (Exato)

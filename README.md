@@ -1,8 +1,8 @@
-# 🌧️ Cálculo de Limiares para Alertas de Deslizamentos
+# Cálculo de Limiares para Alertas de Deslizamentos
 
 Este repositório contém o pipeline de dados (ETL) e as metodologias estatísticas para o cálculo de limiares de chuva acumulada (96h). O objetivo do sistema é fornecer gatilhos confiáveis para a emissão de alertas de risco de deslizamentos no Rio Grande do Sul, utilizando dados históricos pluviométricos do INMET.
 
-## 🏗️ Arquitetura do Projeto
+## Arquitetura do Projeto
 
 A estrutura do repositório foi desenhada para separar claramente a ingestão de dados, as funções centrais, os processos em lote (batch) e a visualização:
 
@@ -21,7 +21,7 @@ A estrutura do repositório foi desenhada para separar claramente a ingestão de
 └── README.md
 ```
 
-## 🧮 Metodologia Estatística
+## Metodologia Estatística
 
 O pilar do cálculo é a **distribuição Tweedie**, que é o padrão ouro na meteorologia para modelar dados de precipitação, pois consegue lidar perfeitamente com massas de dados contendo valores zero (dias sem chuva) e valores contínuos positivos.
 

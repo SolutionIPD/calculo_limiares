@@ -189,5 +189,6 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
   return(list(estacao = estacao_alvo$estacao, distancia_km = round(distancia_km, 2), 
               metadata = list(data_inicio = data_inicio, data_fim = data_fim, n_dados = n_dados, n_ausentes = n_ausentes),
               params = list(mu = unname(mu_otimo), phi = phi_otimo, power = p_otimo), 
-              limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = cuts, Limiar_mm = round(limiares_mm, 2))))
+              limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = cuts, Limiar_mm = round(limiares_mm, 2)),
+              dados = dados_diarios))
 }

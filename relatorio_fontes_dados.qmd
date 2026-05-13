@@ -1,0 +1,100 @@
+---
+title: "Análise Crítica: Fontes de Dados Pluviométricos e a Defesa das Estações Físicas"
+author: "Documentação Metodológica"
+format: 
+  html:
+    toc: true
+    toc-title: "Índice"
+    theme: cosmo
+    smooth-scroll: true
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(knitr)
+library(plotly)
+source("/home/thiago/calculo_limiares/R/funcoes_calculo.R")
+dir_brutos <- "/home/thiago/calculo_limiares/dados/inmet_brutos"
+```
+
+## 1. O Princípio da Climatologia e a Natureza dos Extremos
+
+Para o desenvolvimento de um Sistema de Alerta Antecipado para Deslizamentos (LEWS), o limiar de alerta não é um valor absoluto, mas sim um desvio probabilístico (um "extremo"). No entanto, **extremos só podem ser definidos a partir de uma climatologia local bem estabelecida**.
+
+Na ciência meteorológica, a Organização Meteorológica Mundial (OMM) exige séries históricas longas, contínuas e perfeitamente estacionárias. O rigor é tão alto que **mover uma estação meteorológica física alguns metros ou alterar o seu entorno (como o crescimento de uma árvore próxima) já é suficiente para corromper e invalidar a série histórica**, pois altera a microclimatologia (captação de vento, sombreamento pluviométrico, etc.).
+
+Portanto, para calcularmos probabilidades nos quantis de 95% ou 99% com segurança matemática usando a Distribuição Tweedie, precisamos garantir a estacionariedade do instrumento de medição.
+
+## 2. A Problematização das Fontes de Dados Alternativas
+
+A exploração de fontes de dados de grande escala (Satélites e Reanálises) é tentadora devido à sua vasta cobertura espacial, mas apresenta falhas conceituais profundas quando aplicadas ao cálculo rigoroso de extremos locais:
+
+### 2.1. Satélites (IMERG / CHIRPS)
+* **Falta de Estacionariedade Tecnológica:** Uma série de satélite de 20 anos não é homogênea. Ela é um "patchwork" (colcha de retalhos) de diferentes sensores, satélites que decaem em órbita, e missões que são substituídas. Essa quebra de continuidade introduz falsos "extremos" nos dados.
+* **Viés de Tipo de Chuva:** Satélites tendem a subestimar precipitações orográficas quentes (chuva de relevo) e apresentam ruídos altos, requerendo calibração constante.
+* **Aproximação, não Observação:** Satélites não medem chuva caindo; eles medem temperatura de topo de nuvem ou retroespalhamento de micro-ondas, inferindo a chuva através de algoritmos.
+
+### 2.2. Modelos de Reanálise (ERA5 / ERA5-Land)
+* **Resolução Espacial Grosseira:** Os "pixels" de grade (mesmo no ERA5-Land com ~9km) mascaram eventos convectivos (tempestades de verão) muito localizados, achatando os picos absolutos.
+* **Dependência de Assimilação:** A reanálise altera os dados que ingere ao longo do tempo (dependendo do que estava disponível na década de 50 versus na década de 2010), quebrando a premissa de um histórico contínuo e invariável.
+
+## 3. Estrutura Prática dos Dados (Amostras Comparativas)
+
+Para fins de discussão e visualização de como a resolução espaço-temporal impacta o processamento, abaixo apresentamos as estruturas típicas entregues por cada um dos fornecedores de dados citados:
+
+```{r}
+#| label: amostras
+#| echo: false
+#| warning: false
+
+amostra_chirps <- tibble(Data = c("2023-10-01", "2023-10-02"), Lon = -51.55, Lat = -28.93, Fonte = "CHIRPS (Satélite)", Resolucao = "Grade Diária (~5km)", Precip_mm = c(0.0, 12.5))
+amostra_imerg <- tibble(Data_Hora = c("2023-10-01 14:00", "2023-10-01 14:30"), Lon = -51.55, Lat = -28.93, Fonte = "IMERG (Satélite)", Resolucao = "Grade 30 min (~10km)", Precip_mm = c(1.2, 4.5))
+amostra_era5 <- tibble(Data_Hora = c("2023-10-01 14:00", "2023-10-01 15:00"), Lon = -51.50, Lat = -28.90, Fonte = "ERA5-Land (Reanálise)", Resolucao = "Grade Horária (~9km)", Precip_mm = c(3.8, 5.0), Umidade_Solo = c(0.45, 0.46))
+amostra_inmet <- tibble(Estacao = "A840_BENTO", Data = "2023-10-01", Hora = c("14:00", "15:00"), Fonte = "INMET (Pluviômetro)", Resolucao = "Ponto Físico Horário", Precip_mm = c(5.2, 8.4))
+
+kable(bind_rows(amostra_chirps %>% rename(Data_Hora = Data), amostra_imerg, amostra_era5, amostra_inmet), 
+      caption = "Comparativo Estrutural das Bases de Dados (Amostras Ilustrativas)")
+```
+
+## 4. A Robustez e a Defesa da Rede INMET
+
+A nossa decisão metodológica de fundamentar o cálculo de limiares utilizando diretamente os arquivos *brutos* (.CSV) da rede física do INMET (e expansão futura para redes municipais e CEMADEN) baseia-se nos seguintes pilares:
+
+1. **Verdade de Solo (*Ground Truth*):** A precipitação é captada fisicamente. Um milímetro no pluviômetro é um milímetro de água real, sem inferências indiretas de radiação.
+2. **Séries Longas e Consolidadas:** Possuímos estações com décadas de histórico ininterrupto na mesma exata coordenada geográfica, permitindo que a "massa de zeros" e as caudas longas da Distribuição Tweedie representem o clima real do município.
+3. **Consistência do Instrumento:** Falhas físicas ocorrem (como dados negativos em defeitos), mas são detectáveis e tratáveis localmente de forma isolada, ao contrário de um viés global de calibração de um satélite.
+
+### 4.1. Análise de Qualidade (Dados Válidos vs Falhas)
+
+Trabalhar com dados reais de superfície exige lidar com falhas de energia ou manutenção do sensor. O gráfico abaixo ilustra a taxa real de disponibilidade de todas as estações INMET extraídas para o nosso modelo:
+
+```{r}
+#| label: qualidade-inmet
+#| echo: false
+#| message: false
+#| warning: false
+
+meta <- obter_metadados_estacoes(dir_brutos)
+
+qualidade_inmet <- purrr::map_dfr(unique(meta$estacao), function(est) {
+  tryCatch({
+    res <- suppressMessages(calcular_limiares_estacao(nome_estacao = est, dir_brutos = dir_brutos, metodo_ajuste = "matematico"))
+    tibble(Estacao = res$estacao, Total = res$metadata$n_dados, Ausentes = res$metadata$n_ausentes, Validos = Total - Ausentes)
+  }, error = function(e) NULL)
+})
+
+qualidade_long <- qualidade_inmet %>% arrange(Validos) %>% mutate(Estacao = factor(Estacao, levels = unique(Estacao))) %>% select(Estacao, Validos, Ausentes) %>% pivot_longer(cols = c(Validos, Ausentes), names_to = "Status", values_to = "Registros")
+
+p <- ggplot(qualidade_long, aes(x = Registros, y = Estacao, fill = Status)) + geom_bar(stat = "identity") + scale_fill_manual(values = c("Validos" = "#2ecc71", "Ausentes" = "#e74c3c")) + theme_minimal() + labs(title = "Disponibilidade da Série Histórica INMET", x = "Total de Registros (Horas)", y = "", fill = "Qualidade do Dado") + theme(axis.text.y = element_text(size = 7))
+
+ggplotly(p, tooltip = c("x", "fill")) %>% layout(height = 800)
+```
+
+## 5. Conclusão
+
+Modelar extremos requer respeito à climatologia do local. Embora fontes de satélite ou reanálise sirvam para fornecer contexto sinótico ou preencher lacunas espaciais macro, **elas não substituem o rigor estatístico de uma estação física estacionária para o cálculo de quantis críticos.** 
+
+Nosso motor estatístico foca na estabilidade do histórico. Uma vez que o limite seja traçado com precisão matemática em estações reais, o sistema terá aderência direta ao solo em que a população reside.

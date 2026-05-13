@@ -20,6 +20,9 @@ library(statmod)
 library(plotly)
 library(DT)
 library(knitr)
+library(leaflet)
+
+library(crosstalk)
 
 source("/home/thiago/calculo_limiares/R/funcoes_calculo.R")
 data_path <- "/home/thiago/calculo_limiares/dados/parametros/"
@@ -59,13 +62,9 @@ A função unificada `calcular_limiares_estacao()` abstrai todo o ETL pesado dos
 
 ## Column {width="65%"}
 
-### 3. Tabela Completa de Estações (Método Matemático)
-
 ```{r}
-#| label: calculo_limiares
-#| echo: false
-#| message: false
-#| warning: false
+#| label: prepare-shared-data
+#| include: false
 
 meta <- obter_metadados_estacoes(dir_brutos)
 lista_estacoes <- unique(meta$estacao)
@@ -77,20 +76,60 @@ tabela_completa <- purrr::map_dfr(lista_estacoes, function(est) {
       Estação = res$estacao,
       `Início` = res$metadata$data_inicio,
       `Fim` = res$metadata$data_fim,
+      `Anos` = res$metadata$anos,
+      `Status` = res$metadata$status,
+      `Falhas (%)` = res$metadata$pct_ausentes * 100,
       `Registros (H)` = res$metadata$n_dados,
       `Ausentes` = res$metadata$n_ausentes,
-      `Moderado (mm)` = res$limiares$Limiar_mm,
-      `Alto (mm)` = res$limiares$Limiar_mm,
-      `Muito Alto (mm)` = res$limiares$Limiar_mm,
-      `Altíssimo (mm)` = res$limiares$Limiar_mm
+      `Moderado (mm)` = res$limiares$Limiar_mm[1],
+      `Alto (mm)` = res$limiares$Limiar_mm[2],
+      `Muito Alto (mm)` = res$limiares$Limiar_mm[3],
+      `Altíssimo (mm)` = res$limiares$Limiar_mm[4]
     )
   }, error = function(e) NULL)
 }) %>% arrange(Estação)
 
-datatable(tabela_completa %>% mutate(across(where(is.numeric), ~round(., 2))),
-          options = list(pageLength = 15, dom = 'Bfrtip', autoWidth = TRUE),
+map_data_with_status <- left_join(tabela_completa, meta, by = c("Estação" = "estacao"))
+
+shared_data <- SharedData$new(map_data_with_status, key = ~Estação)
+
+pal <- colorFactor(c("#27ae60", "#f39c12", "#c0392b"), domain = c("Robusta", "Muitas Falhas", "Série Curta"))
+```
+
+### Mapa Interativo de Estações
+
+Abaixo está a distribuição geográfica de todas as estações físicas do INMET cujos dados brutos foram processados para este relatório.
+
+```{r}
+#| label: mapa-estacoes-filtrado
+#| echo: false
+
+filter_select("status_filter", "Filtrar por Robustez:", shared_data, ~Status, multiple = TRUE)
+
+leaflet(shared_data, width = "100%") %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(
+    ~lon, 
+    ~lat, 
+    popup = ~paste0("<strong>Estação:</strong> ", Estação, "<br>", "<strong>Nome:</strong> ", nome, "<br><strong>Status:</strong> ", Status),
+    label = ~Estação,
+    color = ~pal(Status),
+    radius = 5,
+    stroke = FALSE,
+    fillOpacity = 0.8
+  ) %>%
+  addLegend("bottomright", pal = pal, values = ~Status, title = "Status da Série", opacity = 1)
+```
+
+### 3. Tabela Completa de Estações (Método Matemático)
+
+```{r}
+#| label: tabela-filtrada
+#| echo: false
+
+datatable(shared_data,
+          options = list(pageLength = 10, dom = 'Bfrtip', autoWidth = TRUE),
           rownames = FALSE,
-          filter = 'top',
           caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
 ```
 

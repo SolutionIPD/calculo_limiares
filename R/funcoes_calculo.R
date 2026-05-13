@@ -159,6 +159,15 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
   }
   n_dados <- nrow(dados)
   n_ausentes <- sum(is.na(dados$Precipitacao))
+  pct_ausentes <- n_ausentes / n_dados
+  anos_estimados <- n_dados / 8766 # 365.25 dias * 24 horas
+  
+  status_qualidade <- "Robusta"
+  if (anos_estimados < 10) {
+    status_qualidade <- "Série Curta"
+  } else if (pct_ausentes > 0.10) {
+    status_qualidade <- "Muitas Falhas"
+  }
 
   # 4. Ajustar Tweedie e Extrair Limiares
   if (metodo_ajuste == "matematico") {
@@ -187,7 +196,7 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
   
   message("=> Concluído!")
   return(list(estacao = estacao_alvo$estacao, distancia_km = round(distancia_km, 2), 
-              metadata = list(data_inicio = data_inicio, data_fim = data_fim, n_dados = n_dados, n_ausentes = n_ausentes),
+              metadata = list(data_inicio = data_inicio, data_fim = data_fim, n_dados = n_dados, n_ausentes = n_ausentes, pct_ausentes = pct_ausentes, anos = anos_estimados, status = status_qualidade),
               params = list(mu = unname(mu_otimo), phi = phi_otimo, power = p_otimo), 
               limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = cuts, Limiar_mm = round(limiares_mm, 2)),
               dados = dados_diarios))

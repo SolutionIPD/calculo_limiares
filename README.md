@@ -12,11 +12,12 @@ A estrutura do repositório foi desenhada para separar claramente a ingestão de
 │   ├── inmet_brutos/          # CSVs históricos organizados por estação (Ignorado no Git)
 │   └── parametros/            # Resultados do treinamento: tb_params_atual.rds
 ├── R/
-│   ├── 01_processo_treinamento.R  # Script de ETL: varre os CSVs, ajusta modelos e salva o .rds
-│   ├── funcoes_calculo.R          # Core: funções de leitura, acumulado 96h e cálculo Tweedie
-│   └── exemplos_uso.R             # Script de teste isolado das funções
+│   ├── 01_processo_treinamento.R # Script de ETL: varre os CSVs, ajusta modelos e salva o .rds
+│   ├── funcoes_calculo.R         # Core: funções de leitura, acumulado 96h e cálculo Tweedie
+│   └── exemplos_uso.R            # Script de teste isolado das funções
 ├── relatorios/
-│   └── relatorio_final.Rmd        # Dashboard interativo (Quarto/RMarkdown)
+│   ├── relatorio_tecnico.qmd      # Dashboard técnico interativo da metodologia
+│   └── relatorio_fontes_dados.qmd # Análise crítica das fontes de dados
 ├── organiza_inmet.sh              # Script Bash para mapear e organizar CSVs baixados
 └── README.md
 ```

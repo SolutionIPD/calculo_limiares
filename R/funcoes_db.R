@@ -122,7 +122,8 @@ calcular_limiares_estacao_db <- function(con, nome_estacao = NULL, lat = NULL, l
 
   # Limpeza e tratamento de falhas
   dados_horarios <- dados_horarios %>%
-    mutate(precipitacao_mm = ifelse(precipitacao_mm < 0, 0, precipitacao_mm))
+    mutate(precipitacao_mm = ifelse(precipitacao_mm < 0, 0, precipitacao_mm)) %>%
+    replace_na(list(precipitacao_mm = 0))
 
   # Engenharia de dados: acumulado de 96h e amostragem diária
   dados_diarios <- dados_horarios %>%
@@ -132,13 +133,13 @@ calcular_limiares_estacao_db <- function(con, nome_estacao = NULL, lat = NULL, l
     select(data_hora, chuva_acumulada_96h) %>%
     drop_na()
 
-  if (nrow(dados_diarios) < 365) {
-    warning(paste("Série histórica muito curta para", nome_estacao))
-    return(NULL)
-  }
-
   # Filtra apenas os dias com chuva para o ajuste do modelo
   chuva_positiva <- dados_diarios$chuva_acumulada_96h[dados_diarios$chuva_acumulada_96h > 0]
+
+  if (length(chuva_positiva) < 2) {
+    warning(paste("Sem dias de chuva suficientes para o ajuste matemático em", nome_estacao))
+    return(NULL)
+  }
 
   # ---- Cálculo dos Parâmetros Tweedie ----
   params <- list()
@@ -168,14 +169,14 @@ calcular_limiares_estacao_db <- function(con, nome_estacao = NULL, lat = NULL, l
     data_inicio = min(dados_diarios$data_hora),
     data_fim = max(dados_diarios$data_hora),
     anos = as.numeric(difftime(max(dados_diarios$data_hora), min(dados_diarios$data_hora), units = "days")) / 365.25,
-    n_dados = nrow(dados_diarios),
+    n_dados = nrow(dados_horarios),
     n_ausentes = sum(is.na(dados_horarios$precipitacao_mm)),
     pct_ausentes = sum(is.na(dados_horarios$precipitacao_mm)) / nrow(dados_horarios)
   )
   meta$status <- case_when(
-      meta$anos < 5 ~ "Série Curta",
-      meta$pct_ausentes > 0.25 ~ "Muitas Falhas",
-      TRUE ~ "Robusta"
+      meta$pct_ausentes > 0.10 ~ "Muitos Faltantes",
+      meta$anos < 10 ~ "Série Curta",
+      TRUE ~ "Adequada"
   )
 
   return(list(

@@ -39,7 +39,7 @@ Foram implementados dois motores de cálculo para a extração dos limiares (qua
 * **R** (versão 4.0 ou superior)
 * **PostgreSQL com PostGIS**: Um servidor de banco de dados acessível.
   * **Recomendado (Docker)**: Utilize uma imagem oficial do PostGIS. Exemplo:
-    `docker run --name postgis-limiares -e POSTGRES_USER=thiago -e POSTGRES_PASSWORD=SUA_SENHA_SECRETA -e POSTGRES_DB=limiares_db -p 5433:5432 -d postgis/postgis`
+    `docker run --name postgis-limiares -e POSTGRES_USER=thiago -e POSTGRES_PASSWORD=uma_senha_forte_para_thiago -e POSTGRES_DB=limiares_db -p 15432:5432 -d postgis/postgis`
   * **Instalação Nativa (Ubuntu/Debian)**: Requer a instalação da extensão via gerenciador de pacotes (ex: `sudo apt install postgis postgresql-16-postgis-3`).
 * **Quarto**: Para renderizar os relatórios.
 * **Bibliotecas R**: Instale os pacotes necessários:

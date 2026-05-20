@@ -1,5 +1,5 @@
 DB_HOST=127.0.0.1
-DB_PORT=5433
+DB_PORT=15432
 DB_NAME=limiares_db
 DB_USER=thiago
 DB_PASSWORD=uma_senha_forte_para_thiago

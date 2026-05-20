@@ -66,34 +66,44 @@ A função unificada `calcular_limiares_estacao()` abstrai todo o ETL pesado dos
 #| label: prepare-shared-data
 #| include: false
 
-meta <- obter_metadados_estacoes(dir_brutos)
-lista_estacoes <- unique(meta$estacao)
+# Carrega os parâmetros calculados pelo script de treinamento em lote
+tb_params <- readRDS("/home/thiago/calculo_limiares/dados/parametros/tb_params_atual.rds")
+lista_estacoes <- obter_metadados_estacoes_db(con)
 
-tabela_completa <- purrr::map_dfr(lista_estacoes, function(est) {
-  tryCatch({
-    res <- suppressMessages(calcular_limiares_estacao(nome_estacao = est, dir_brutos = dir_brutos, metodo_ajuste = "matematico"))
-    tibble(
-      Estação = res$estacao,
-      `Início` = res$metadata$data_inicio,
-      `Fim` = res$metadata$data_fim,
-      `Anos` = res$metadata$anos,
-      `Status` = res$metadata$status,
-      `Falhas (%)` = res$metadata$pct_ausentes * 100,
-      `Registros (H)` = res$metadata$n_dados,
-      `Ausentes` = res$metadata$n_ausentes,
-      `Moderado (mm)` = res$limiares$Limiar_mm[1],
-      `Alto (mm)` = res$limiares$Limiar_mm[2],
-      `Muito Alto (mm)` = res$limiares$Limiar_mm[3],
-      `Altíssimo (mm)` = res$limiares$Limiar_mm[4]
+# Calcula os limiares em tempo real a partir dos parâmetros para compor a tabela
+tabela_completa <- tb_params %>%
+  rowwise() %>%
+  mutate(
+    `Moderado (mm)` = round(qtweedie(0.65, power = power, mu = mu, phi = phi), 2),
+    `Alto (mm)` = round(qtweedie(0.85, power = power, mu = mu, phi = phi), 2),
+    `Muito Alto (mm)` = round(qtweedie(0.95, power = power, mu = mu, phi = phi), 2),
+    `Altíssimo (mm)` = round(qtweedie(0.99, power = power, mu = mu, phi = phi), 2),
+    `Falhas (%)` = round((n_ausentes / n_dados) * 100, 2),
+    `Anos` = round(n_dados / 8766, 1),
+    `Status` = case_when(
+      `Falhas (%)` > 10 ~ "Inadequada",
+      `Anos` < 10 ~ "Série Curta",
+      TRUE ~ "Robusta"
     )
-  }, error = function(e) NULL)
-}) %>% arrange(Estação)
+  ) %>%
+  ungroup() %>%
+  select(
+    Estação = station, `Início` = data_inicio, `Fim` = data_fim,
+    `Anos`, `Status`, `Falhas (%)`, `Registros (H)` = n_dados, `Ausentes` = n_ausentes,
+    `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`
+  ) %>%
+  arrange(Estação)
 
-map_data_with_status <- left_join(tabela_completa, meta, by = c("Estação" = "estacao"))
+# Invertemos o Join para usar a lista do banco de dados como base. 
+# Assim, as que não passaram do treinamento (< 1 ano) continuam no mapa.
+map_data_with_status <- left_join(lista_estacoes, tabela_completa, by = c("codigo" = "Estação")) %>% 
+  rename(Estação = codigo) %>%
+  mutate(Status = replace_na(Status, "Dados Insuficientes")) %>%
+  filter(!is.na(lat))
 
 shared_data <- SharedData$new(map_data_with_status, key = ~Estação)
 
-pal <- colorFactor(c("#27ae60", "#f39c12", "#c0392b"), domain = c("Robusta", "Muitas Falhas", "Série Curta"))
+pal <- colorFactor(c("#27ae60", "#c0392b", "#f39c12", "#7f8c8d"), domain = c("Robusta", "Inadequada", "Série Curta", "Dados Insuficientes"))
 ```
 
 ### Mapa Interativo de Estações
@@ -147,11 +157,25 @@ Abaixo demonstramos, em tempo real, a diferença entre extrair os limiares utili
 #| message: false
 #| warning: false
 
-estacao_teste <- "BENTO GONCALVES"
+# Carrega novamente para ter acesso ao tb_params no escopo deste chunk
+tb_params <- readRDS("/home/thiago/calculo_limiares/dados/parametros/tb_params_atual.rds")
+estacao_teste <- "A840_BENTO GONCALVES"
 
-resultado_matematico <- suppressMessages(
-  calcular_limiares_estacao(nome_estacao = estacao_teste, dir_brutos = dir_brutos, metodo_ajuste = "matematico")
-)
+# Garante que a estação teste seja válida
+if (!estacao_teste %in% tb_params$station) {
+  estacao_teste <- tb_params$station[1]
+}
+
+resultado_matematico <- suppressMessages(calcular_limiares_estacao_db(con = con, nome_estacao = estacao_teste, metodo_ajuste = "matematico"))
+
+if (is.null(resultado_matematico)) {
+  # Falback seguro caso a função retorne NULL por qualquer motivo
+  resultado_matematico <- list(
+    limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = c(0.65, 0.85, 0.95, 0.99), Limiar_mm = c(0,0,0,0)),
+    params = list(mu = 1, phi = 1, p = 1.5),
+    dados = tibble(chuva_acumulada_96h = numeric())
+  )
+}
 
 resultado_pacote_baseline <- tibble(
   Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"),

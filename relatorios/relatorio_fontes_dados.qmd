@@ -79,14 +79,15 @@ Trabalhar com dados reais de superfície exige lidar com falhas de energia ou ma
 #| message: false
 #| warning: false
 
-meta <- obter_metadados_estacoes(dir_brutos)
+tb_params <- readRDS("/home/thiago/calculo_limiares/dados/parametros/tb_params_atual.rds")
 
-qualidade_inmet <- purrr::map_dfr(unique(meta$estacao), function(est) {
-  tryCatch({
-    res <- suppressMessages(calcular_limiares_estacao(nome_estacao = est, dir_brutos = dir_brutos, metodo_ajuste = "matematico"))
-    tibble(Estacao = res$estacao, Total = res$metadata$n_dados, Ausentes = res$metadata$n_ausentes, Validos = Total - Ausentes)
-  }, error = function(e) NULL)
-})
+qualidade_inmet <- tb_params %>%
+  mutate(
+    Estacao = station,
+    Total = n_dados,
+    Ausentes = n_ausentes,
+    Validos = Total - Ausentes
+  ) %>% select(Estacao, Total, Ausentes, Validos)
 
 qualidade_long <- qualidade_inmet %>% arrange(Validos) %>% mutate(Estacao = factor(Estacao, levels = unique(Estacao))) %>% select(Estacao, Validos, Ausentes) %>% pivot_longer(cols = c(Validos, Ausentes), names_to = "Status", values_to = "Registros")
 

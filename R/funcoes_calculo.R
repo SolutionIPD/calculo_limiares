@@ -74,8 +74,15 @@ ler_dados_estacao <- function(codigo_estacao, dir_brutos = "dados/inmet_brutos")
       df <- df[, 1:3] # Pega apenas: Data, Hora UTC, Precipitação
       colnames(df) <- c("Data", "Hora", "Precipitacao")
       df$Data <- as.character(df$Data)
-      df$Hora <- as.character(df$Hora)
-      df$Precipitacao <- as.numeric(df$Precipitacao)
+      
+      # Tratamento super robusto para Hora (formatos antigos e novos do INMET)
+      hora_str <- gsub(" UTC", "", as.character(df$Hora))
+      hora_str <- gsub(":", "", hora_str)
+      hora_str <- stringr::str_pad(hora_str, width = 4, side = "left", pad = "0")
+      df$Hora <- paste0(substr(hora_str, 1, 2), ":", substr(hora_str, 3, 4))
+      
+      # Tratamento robusto para decimais (INMET mistura ',' e '.')
+      df$Precipitacao <- as.numeric(gsub(",", ".", as.character(df$Precipitacao)))
       df$Precipitacao[df$Precipitacao < 0] <- NA # Limpa falhas
       df
     }, error = function(e) NULL)
@@ -83,7 +90,7 @@ ler_dados_estacao <- function(codigo_estacao, dir_brutos = "dados/inmet_brutos")
   
   if (nrow(dados) > 0) {
     dados <- dados %>%
-      mutate(data_hora = suppressWarnings(lubridate::parse_date_time(paste(Data, sub(" UTC", "", Hora)), orders = c("Ymd HM", "ymd HM", "dmy HM", "dmY HM")))) %>%
+      mutate(data_hora = suppressWarnings(lubridate::parse_date_time(paste(Data, Hora), orders = c("Ymd HM", "ymd HM", "dmy HM", "dmY HM")))) %>%
       select(data_hora, precipitacao_mm = Precipitacao)
   } else {
     dados <- tibble(data_hora = as.POSIXct(character()), precipitacao_mm = numeric())

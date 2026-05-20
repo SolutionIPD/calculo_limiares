@@ -90,6 +90,10 @@ tryCatch({
   stop(msg, call. = FALSE) # call. = FALSE para um traceback mais limpo
 })
 
+# Destruição TOTAL do banco de dados (a pedido) para garantir uma recarga limpa
+dbExecute(con, "DROP TABLE IF EXISTS leituras_horarias CASCADE;")
+dbExecute(con, "DROP TABLE IF EXISTS estacoes CASCADE;")
+
 # Cria a tabela de estações com um campo de geometria PostGIS
 dbExecute(con, "
   CREATE TABLE IF NOT EXISTS estacoes (
@@ -107,8 +111,9 @@ dbExecute(con, "
   CREATE TABLE IF NOT EXISTS leituras_horarias (
     id SERIAL PRIMARY KEY,
     estacao_id INTEGER REFERENCES estacoes(id),
-    data_hora TIMESTAMP UNIQUE NOT NULL,
-    precipitacao_mm DOUBLE PRECISION
+    data_hora TIMESTAMP NOT NULL,
+    precipitacao_mm DOUBLE PRECISION,
+    UNIQUE (estacao_id, data_hora)
   );
 ")
 
@@ -135,11 +140,15 @@ cat("Metadados das estações carregados no banco.\n")
 
 estacoes_no_banco <- dbGetQuery(con, "SELECT id, codigo FROM estacoes")
 
+estacoes_sucesso <- 0
+estacoes_vazias <- 0
+total_linhas <- 0
+
 for (i in 1:nrow(estacoes_no_banco)) {
   codigo_estacao <- estacoes_no_banco$codigo[i]
   id_estacao <- estacoes_no_banco$id[i]
   
-  cat(paste("Processando dados para a estação:", codigo_estacao, "\n"))
+  cat(sprintf("Processando estação: %s ", codigo_estacao))
   
   # Lê os dados do CSV usando a função existente
   dados_csv <- ler_dados_estacao(codigo_estacao, dir_brutos) %>%
@@ -147,11 +156,32 @@ for (i in 1:nrow(estacoes_no_banco)) {
     mutate(estacao_id = id_estacao) %>%
     filter(!is.na(data_hora))
 
-  # Insere os dados no banco, ignorando conflitos de data_hora (evita duplicatas)
-  dbWriteTable(con, "leituras_horarias", dados_csv, append = TRUE, row.names = FALSE)
+  if (nrow(dados_csv) > 0) {
+    cat(sprintf("-> %d registros... ", nrow(dados_csv)))
+    # Padrão de "upsert" em lote para alta performance e segurança:
+    # 1. Carrega os dados em uma tabela temporária (operação de COPY, muito rápida).
+    #    Usamos `overwrite = TRUE` para garantir que a tabela temp seja limpa a cada iteração do loop.
+    dbWriteTable(con, "temp_leituras_carga", dados_csv, temporary = TRUE, overwrite = TRUE, row.names = FALSE)
+    
+    # 2. Usa um INSERT com ON CONFLICT para inserir apenas os registros que não existem.
+    #    Isso torna o script "idempotente" (pode ser rodado várias vezes sem erro).
+    #    A verificação de duplicatas é feita pelo banco de dados, que é a forma mais eficiente.
+    dbExecute(con, "INSERT INTO leituras_horarias (estacao_id, data_hora, precipitacao_mm) SELECT estacao_id, data_hora, precipitacao_mm FROM temp_leituras_carga ON CONFLICT (estacao_id, data_hora) DO NOTHING;")
+    cat("OK\n")
+    estacoes_sucesso <- estacoes_sucesso + 1
+    total_linhas <- total_linhas + nrow(dados_csv)
+  } else {
+    cat("-> VAZIA (Nenhum dado lido dos CSVs)\n")
+    estacoes_vazias <- estacoes_vazias + 1
+  }
 }
 
-cat("\nCarga de dados concluída com sucesso!\n")
+cat("\n=========================================\n")
+cat("RESUMO DA CARGA DE DADOS NO BANCO:\n")
+cat(sprintf("- Estações carregadas com sucesso: %d\n", estacoes_sucesso))
+cat(sprintf("- Estações sem dados válidos (ignoradas): %d\n", estacoes_vazias))
+cat(sprintf("- Total de linhas de precipitação processadas: %d\n", total_linhas))
+cat("=========================================\n")
 
 # ---- 5. Desconexão ----
 dbDisconnect(con)

@@ -35,9 +35,36 @@ lista_estacoes <- obter_metadados_estacoes_db(con)
 
 # Roda o processo de cálculo para todas as estações e salva o resultado
 tb_parametros_limiares <- purrr::map_dfr(lista_estacoes$codigo, function(est) {
-  cat(paste("Calculando limiares para a estação:", est, "\n"))
-  suppressWarnings(calcular_limiares_estacao_db(con, nome_estacao = est))
+  cat(sprintf("Processando estação %s... ", est))
+  
+  tryCatch({
+    res <- suppressWarnings(calcular_limiares_estacao_db(con, nome_estacao = est, metodo_ajuste = "matematico"))
+    
+    if (is.null(res)) {
+      cat("Ignorada (Dados Insuficientes)\n")
+      return(NULL)
+    }
+    
+    cat("OK\n")
+    tibble(
+      station = res$estacao,
+      horas = 96,
+      mu = res$params$mu,
+      phi = res$params$phi,
+      power = res$params$p,
+      data_inicio = res$metadata$data_inicio,
+      data_fim = res$metadata$data_fim,
+      n_dados = res$metadata$n_dados,
+      n_ausentes = res$metadata$n_ausentes
+    )
+  }, error = function(e) {
+    cat(sprintf("[ERRO: %s]\n", e$message))
+    return(NULL)
+  })
 })
+
+# Garante que o diretório de destino exista antes de salvar
+dir.create("dados/parametros", recursive = TRUE, showWarnings = FALSE)
 
 saveRDS(tb_parametros_limiares, "dados/parametros/tb_params_atual.rds")
 

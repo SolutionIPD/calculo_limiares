@@ -12,9 +12,11 @@ A estrutura do repositório foi desenhada para separar claramente a ingestão de
 │   ├── inmet_brutos/          # CSVs históricos organizados por estação (Ignorado no Git)
 │   └── parametros/            # Resultados do treinamento: tb_params_atual.rds
 ├── R/
-│   ├── 01_processo_treinamento.R # Script de ETL: varre os CSVs, ajusta modelos e salva o .rds
+│   ├── 01_processo_treinamento.R # (LEGADO) Script de ETL baseado em arquivos CSV
+│   ├── 01_processo_treinamento_db.R # Script de ETL: lê do banco, ajusta modelos e salva o .rds
+│   ├── 02_carga_banco.R          # Script de carga única: migra CSVs para o PostGIS
 │   ├── funcoes_calculo.R         # Core: funções de leitura, acumulado 96h e cálculo Tweedie
-│   └── exemplos_uso.R            # Script de teste isolado das funções
+│   └── funcoes_db.R              # Core (DB): funções que acessam o banco de dados
 ├── relatorios/
 │   ├── relatorio_tecnico.qmd      # Dashboard técnico interativo da metodologia
 │   └── relatorio_fontes_dados.qmd # Análise crítica das fontes de dados
@@ -33,16 +35,32 @@ Foram implementados dois motores de cálculo para a extração dos limiares (qua
 
 ## 🚀 Como Executar o Projeto
 
-### 1. Pré-requisitos
+### 1. Pré-requisitos e Configuração
 * **R** (versão 4.0 ou superior)
-* Bibliotecas R: `tidyverse`, `tweedie`, `statmod`, `flexdashboard`, `plotly`, `DT`
-* **Quarto** / RMarkdown instalado
+* **PostgreSQL com PostGIS**: Um servidor de banco de dados acessível.
+  * **Recomendado (Docker)**: Utilize uma imagem oficial do PostGIS. Exemplo:
+    `docker run --name postgis-limiares -e POSTGRES_USER=thiago -e POSTGRES_PASSWORD=SUA_SENHA_SECRETA -e POSTGRES_DB=limiares_db -p 5433:5432 -d postgis/postgis`
+  * **Instalação Nativa (Ubuntu/Debian)**: Requer a instalação da extensão via gerenciador de pacotes (ex: `sudo apt install postgis postgresql-16-postgis-3`).
+* **Quarto**: Para renderizar os relatórios.
+* **Bibliotecas R**: Instale os pacotes necessários:
+  ```r
+  install.packages(c("tidyverse", "tweedie", "statmod", "plotly", "DT", "leaflet", "crosstalk", "RPostgres", "DBI", "lubridate"))
+  ```
+* **Variáveis de Ambiente**: Crie um arquivo `.Renviron` na raiz do projeto (`/home/thiago/calculo_limiares/.Renviron`) com as credenciais do seu banco de dados para que os scripts possam se conectar:
+  ```
+  DB_HOST=localhost
+  DB_PORT=5432
+  DB_NAME=seu_banco
+  DB_USER=seu_usuario
+  DB_PASSWORD=sua_senha
+  ```
+  **Importante:** Após criar ou modificar o arquivo `.Renviron`, você **deve reiniciar sua sessão R** (no RStudio, vá em `Session > Restart R`) para que as variáveis sejam carregadas.
 
-### 2. Preparação dos Dados Brutos
+### 2. Preparação e Carga dos Dados
 Baixe os dados históricos do portal do INMET. Salve os arquivos `INMET_*.CSV` descompactados em qualquer pasta (ex: `~/datasets-landslides/dados/`).
 
-Em seguida, edite o diretório de origem no script `organiza_inmet.sh` e execute-o. Ele vai varrer, filtrar estações do RS e organizar tudo nas pastas corretas em milissegundos:
-
+**Passo 2.1: Organizar os CSVs (Opcional, se já não estiver feito)**
+O script `organiza_inmet.sh` ajuda a mover os arquivos CSV para a estrutura de pastas esperada em `dados/inmet_brutos/`.
 ```bash
 chmod +x organiza_inmet.sh
 ./organiza_inmet.sh
@@ -60,9 +78,9 @@ Isso vai gerar o arquivo "banco de dados" oficial em `dados/parametros/tb_params
 ### 4. Visualização e Dashboard
 Com os parâmetros gerados, renderize o dashboard iterativo para visualizar a tabela de limiares treinados e os gráficos comparativos de metodologia.
 
-No terminal:
+No terminal, a partir da raiz do projeto:
 ```bash
-quarto preview relatorios/relatorio_final.Rmd
+quarto preview relatorios/relatorio_tecnico.qmd
 ```
 Ou abra o arquivo no RStudio e clique em **"Knit"**.
 

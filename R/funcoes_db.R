@@ -1,0 +1,188 @@
+# ==============================================================================
+# FUNCOES_DB.R
+#
+# Autor: Gemini Code Assist
+#
+# Descrição:
+# Este arquivo contém as funções core para o cálculo de limiares de alerta
+# de deslizamentos, adaptadas para consumir dados de um banco de dados
+# PostgreSQL/PostGIS.
+#
+# Funções Principais:
+# - conectar_db(): Estabelece e retorna uma conexão com o banco de dados.
+# - obter_metadados_estacoes_db(): Busca os metadados de todas as estações do banco.
+# - ler_dados_estacao_db(): Lê a série histórica de precipitação para uma estação.
+# - calcular_limiares_estacao_db(): Orquestra o processo de cálculo de limiares
+#   para uma estação, buscando por código ou pela estação mais próxima a uma
+#   coordenada (usando PostGIS).
+# ==============================================================================
+
+library(DBI)
+library(RPostgres)
+library(tidyverse)
+library(lubridate)
+library(tweedie)
+library(statmod)
+
+#' Conecta ao banco de dados PostgreSQL.
+#'
+#' Utiliza variáveis de ambiente para as credenciais de conexão.
+#' @return Um objeto de conexão DBI.
+conectar_db <- function() {
+  # Força a leitura do arquivo .Renviron a partir da raiz do projeto
+  caminho_env <- "/home/thiago/calculo_limiares/.Renviron"
+  if (file.exists(caminho_env)) readRenviron(caminho_env)
+
+  # Valida se as variáveis de ambiente essenciais estão configuradas
+  if (Sys.getenv("DB_USER") == "" || Sys.getenv("DB_NAME") == "") {
+    user_val <- Sys.getenv("DB_USER")
+    name_val <- Sys.getenv("DB_NAME")
+    stop(
+      "As variáveis de ambiente do banco de dados não foram carregadas.\n",
+      "-> Causa provável: Você precisa reiniciar sua sessão R/RStudio para que o arquivo '.Renviron' seja lido.\n",
+      "-> Verificação: O script encontrou DB_USER='", user_val, "' e DB_NAME='", name_val, "'. Ambos precisam estar preenchidos.\n",
+      "-> Ação: Reinicie sua sessão R e tente executar o script novamente."
+    )
+  }
+  
+  DBI::dbConnect(
+    RPostgres::Postgres(),
+    host = Sys.getenv("DB_HOST", "127.0.0.1"),
+    port = Sys.getenv("DB_PORT", 5432),
+    dbname = Sys.getenv("DB_NAME"),
+    user = Sys.getenv("DB_USER"),
+    password = Sys.getenv("DB_PASSWORD")
+  )
+}
+
+#' Obtém metadados de todas as estações do banco de dados.
+#'
+#' @param con Objeto de conexão com o banco de dados.
+#' @return Um tibble com os metadados das estações.
+obter_metadados_estacoes_db <- function(con) {
+  dbGetQuery(con, "SELECT codigo, nome, lat, lon FROM estacoes ORDER BY codigo") %>%
+    as_tibble()
+}
+
+#' Lê a série histórica de precipitação para uma estação do banco de dados.
+#'
+#' @param codigo_estacao O código da estação (ex: 'A840_BENTO GONCALVES').
+#' @param con Objeto de conexão com o banco de dados.
+#' @return Um tibble com a série histórica (data_hora, precipitacao_mm).
+ler_dados_estacao_db <- function(codigo_estacao, con) {
+  query <- "
+    SELECT l.data_hora, l.precipitacao_mm
+    FROM leituras_horarias l
+    JOIN estacoes e ON l.estacao_id = e.id
+    WHERE e.codigo = $1
+    ORDER BY l.data_hora;
+  "
+  dbGetQuery(con, query, params = list(codigo_estacao)) %>%
+    as_tibble()
+}
+
+#' Calcula os limiares de precipitação para uma estação usando dados do banco.
+#'
+#' @param con Objeto de conexão com o banco de dados.
+#' @param nome_estacao O código da estação. Se nulo, lat/lon devem ser fornecidos.
+#' @param lat Latitude para busca da estação mais próxima.
+#' @param lon Longitude para busca da estação mais próxima.
+#' @param metodo_ajuste 'matematico' (rápido) ou 'pacote' (lento).
+#' @param cortes Vetor de quantis para os limiares (ex: c(0.65, 0.85, 0.95, 0.99)).
+#' @return Uma lista contendo os limiares, parâmetros e metadados do cálculo.
+calcular_limiares_estacao_db <- function(con, nome_estacao = NULL, lat = NULL, lon = NULL, metodo_ajuste = "matematico", cortes = c(0.65, 0.85, 0.95, 0.99)) {
+  
+  # Se lat/lon forem fornecidos, encontra a estação mais próxima via PostGIS
+  if (is.null(nome_estacao) && !is.null(lat) && !is.null(lon)) {
+    query_dist <- "
+      SELECT codigo
+      FROM estacoes
+      ORDER BY geom <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)
+      LIMIT 1;
+    "
+    resultado <- dbGetQuery(con, query_dist, params = list(lon, lat))
+    if (nrow(resultado) == 0) {
+      stop("Nenhuma estação encontrada no banco de dados.")
+    }
+    nome_estacao <- resultado$codigo[1]
+    cat(paste("Coordenadas fornecidas. Estação mais próxima encontrada:", nome_estacao, "\n"))
+  }
+  
+  if (is.null(nome_estacao)) {
+    stop("Deve ser fornecido 'nome_estacao' ou 'lat'/'lon'.")
+  }
+
+  # Lê os dados da estação do banco
+  dados_horarios <- ler_dados_estacao_db(nome_estacao, con)
+
+  if (nrow(dados_horarios) == 0) {
+    warning(paste("Nenhum dado encontrado para a estação", nome_estacao))
+    return(NULL)
+  }
+
+  # Limpeza e tratamento de falhas
+  dados_horarios <- dados_horarios %>%
+    mutate(precipitacao_mm = ifelse(precipitacao_mm < 0, 0, precipitacao_mm))
+
+  # Engenharia de dados: acumulado de 96h e amostragem diária
+  dados_diarios <- dados_horarios %>%
+    arrange(data_hora) %>%
+    mutate(chuva_acumulada_96h = stats::filter(precipitacao_mm, rep(1, 96), sides = 1, method = "convolution")) %>%
+    filter(hour(data_hora) == 0, minute(data_hora) == 0) %>%
+    select(data_hora, chuva_acumulada_96h) %>%
+    drop_na()
+
+  if (nrow(dados_diarios) < 365) {
+    warning(paste("Série histórica muito curta para", nome_estacao))
+    return(NULL)
+  }
+
+  # Filtra apenas os dias com chuva para o ajuste do modelo
+  chuva_positiva <- dados_diarios$chuva_acumulada_96h[dados_diarios$chuva_acumulada_96h > 0]
+
+  # ---- Cálculo dos Parâmetros Tweedie ----
+  params <- list()
+  if (metodo_ajuste == "matematico") {
+    params$p <- 1.5
+    params$mu <- mean(chuva_positiva)
+    residuos_pearson <- (chuva_positiva - params$mu) / (params$mu^(params$p/2))
+    params$phi <- sum(residuos_pearson^2) / (length(chuva_positiva) - 1)
+  } else { # Método "pacote"
+    fit <- tweedie.profile(chuva_acumulada_96h ~ 1, data = dados_diarios, p.vec = seq(1.1, 1.9, 0.1), do.plot = FALSE)
+    params$p <- fit$p.max
+    params$phi <- fit$phi.max
+    modelo_glm <- glm(chuva_acumulada_96h ~ 1, data = dados_diarios, family = tweedie(var.power = params$p, link.power = 0))
+    params$mu <- exp(coef(modelo_glm)[1])
+  }
+
+  # ---- Cálculo dos Limiares ----
+  limiares <- tibble(
+    Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"),
+    Percentil = cortes,
+    Limiar_mm = round(qtweedie(cortes, power = params$p, mu = params$mu, phi = params$phi), 2)
+  )
+  
+  # ---- Metadados do Processo ----
+  meta <- list(
+    estacao = nome_estacao,
+    data_inicio = min(dados_diarios$data_hora),
+    data_fim = max(dados_diarios$data_hora),
+    anos = as.numeric(difftime(max(dados_diarios$data_hora), min(dados_diarios$data_hora), units = "days")) / 365.25,
+    n_dados = nrow(dados_diarios),
+    n_ausentes = sum(is.na(dados_horarios$precipitacao_mm)),
+    pct_ausentes = sum(is.na(dados_horarios$precipitacao_mm)) / nrow(dados_horarios)
+  )
+  meta$status <- case_when(
+      meta$anos < 5 ~ "Série Curta",
+      meta$pct_ausentes > 0.25 ~ "Muitas Falhas",
+      TRUE ~ "Robusta"
+  )
+
+  return(list(
+    estacao = nome_estacao,
+    limiares = limiares,
+    params = params,
+    metadata = meta,
+    dados = dados_diarios # Opcional: retornar os dados para visualização
+  ))
+}

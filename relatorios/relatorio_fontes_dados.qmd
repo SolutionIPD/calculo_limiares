@@ -16,8 +16,10 @@ format:
 library(tidyverse)
 library(knitr)
 library(plotly)
-source("/home/thiago/calculo_limiares/R/funcoes_calculo.R")
-dir_brutos <- "/home/thiago/calculo_limiares/dados/inmet_brutos"
+source("/home/thiago/calculo_limiares/R/funcoes_db.R") # Carrega funções do banco
+
+# Conecta ao banco de dados
+con <- conectar_db()
 ```
 
 ## 1. O Princípio da Climatologia e a Natureza dos Extremos

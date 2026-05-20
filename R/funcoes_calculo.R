@@ -56,6 +56,42 @@ distancia_haversine <- function(lat1, lon1, lat2, lon2) {
 }
 
 # ------------------------------------------------------------------------------
+# Função Auxiliar: Ler Dados CSV de uma Estação
+# ------------------------------------------------------------------------------
+ler_dados_estacao <- function(codigo_estacao, dir_brutos = "dados/inmet_brutos") {
+  meta <- obter_metadados_estacoes(dir_brutos)
+  estacao_alvo <- meta %>% filter(estacao == codigo_estacao) %>% slice(1)
+  
+  if (nrow(estacao_alvo) == 0) return(tibble())
+  
+  arquivos <- list.files(estacao_alvo$pasta, pattern = "\\.CSV$", ignore.case = TRUE, full.names = TRUE)
+  
+  dados <- map_dfr(arquivos, function(arq) {
+    tryCatch({
+      df <- suppressMessages(read_delim(arq, delim = ";", skip = 8, 
+                       locale = locale(decimal_mark = ",", grouping_mark = "."), 
+                       show_col_types = FALSE, name_repair = "minimal"))
+      df <- df[, 1:3] # Pega apenas: Data, Hora UTC, Precipitação
+      colnames(df) <- c("Data", "Hora", "Precipitacao")
+      df$Data <- as.character(df$Data)
+      df$Hora <- as.character(df$Hora)
+      df$Precipitacao <- as.numeric(df$Precipitacao)
+      df$Precipitacao[df$Precipitacao < 0] <- NA # Limpa falhas
+      df
+    }, error = function(e) NULL)
+  })
+  
+  if (nrow(dados) > 0) {
+    dados <- dados %>%
+      mutate(data_hora = suppressWarnings(lubridate::parse_date_time(paste(Data, sub(" UTC", "", Hora)), orders = c("Ymd HM", "ymd HM", "dmy HM", "dmY HM")))) %>%
+      select(data_hora, precipitacao_mm = Precipitacao)
+  } else {
+    dados <- tibble(data_hora = as.POSIXct(character()), precipitacao_mm = numeric())
+  }
+  return(dados)
+}
+
+# ------------------------------------------------------------------------------
 # FUNÇÃO PRINCIPAL: Calcular Limiares por Estação
 # ------------------------------------------------------------------------------
 #' Calcular Limiares por Estação (Distribuição Tweedie)

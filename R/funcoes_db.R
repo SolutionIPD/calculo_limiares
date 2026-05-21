@@ -81,6 +81,82 @@ ler_dados_estacao_db <- function(codigo_estacao, con) {
     as_tibble()
 }
 
+#' Calcula os limiares de precipitação para uma região/polígono (Precipitação Média Areal)
+#'
+#' @param con Objeto de conexão com o banco de dados.
+#' @param wkt_poligono String em formato WKT (Well-Known Text) representando o polígono (SRID 4326).
+#' @param cortes Vetor de quantis para os limiares.
+#' @return Uma lista contendo os limiares regionais, parâmetros e metadados.
+calcular_limiares_poligono_db <- function(con, wkt_poligono, cortes = c(0.65, 0.85, 0.95, 0.99)) {
+  
+  # Query espacial que extrai todas as estações contidas no polígono e já
+  # retorna a Precipitação Média Areal por hora (ignorando as estações com falha na referida hora)
+  query_regional <- "
+    SELECT 
+      l.data_hora, 
+      AVG(l.precipitacao_mm) as precipitacao_mm,
+      COUNT(l.precipitacao_mm) as estacoes_operantes
+    FROM leituras_horarias l
+    JOIN estacoes e ON l.estacao_id = e.id
+    WHERE ST_Intersects(ST_GeomFromText($1, 4326), e.geom)
+    GROUP BY l.data_hora
+    ORDER BY l.data_hora;
+  "
+  
+  dados_horarios <- dbGetQuery(con, query_regional, params = list(wkt_poligono)) %>%
+    as_tibble()
+
+  if (nrow(dados_horarios) < 96) {
+    return(NULL) # Polígono sem nenhuma estação ou com série muito curta (< 96h)
+  }
+
+  # Limpeza e tratamento de falhas (agora aplicado à média regional)
+  dados_horarios <- dados_horarios %>%
+    mutate(precipitacao_mm = ifelse(precipitacao_mm < 0, 0, precipitacao_mm)) %>%
+    replace_na(list(precipitacao_mm = 0))
+
+  # Engenharia de dados: acumulado de 96h e amostragem diária
+  dados_diarios <- dados_horarios %>%
+    arrange(data_hora) %>%
+    mutate(chuva_acumulada_96h = stats::filter(precipitacao_mm, rep(1, 96), sides = 1, method = "convolution")) %>%
+    filter(hour(data_hora) == 0, minute(data_hora) == 0) %>%
+    select(data_hora, chuva_acumulada_96h) %>%
+    drop_na()
+
+  chuva_positiva <- dados_diarios$chuva_acumulada_96h[dados_diarios$chuva_acumulada_96h > 0]
+
+  if (length(chuva_positiva) < 2) {
+    return(NULL)
+  }
+
+  # ---- Cálculo dos Parâmetros Tweedie (Método Matemático Exato) ----
+  params <- list()
+  params$p <- 1.5
+  params$mu <- mean(chuva_positiva)
+  residuos_pearson <- (chuva_positiva - params$mu) / (params$mu^(params$p/2))
+  params$phi <- sum(residuos_pearson^2) / (length(chuva_positiva) - 1)
+
+  # ---- Cálculo dos Limiares ----
+  limiares <- tibble(
+    Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"),
+    Percentil = cortes,
+    Limiar_mm = round(qtweedie(cortes, power = params$p, mu = params$mu, phi = params$phi), 2)
+  )
+  
+  meta <- list(
+    data_inicio = min(dados_diarios$data_hora),
+    data_fim = max(dados_diarios$data_hora),
+    max_estacoes_simultaneas = max(dados_horarios$estacoes_operantes, na.rm = TRUE)
+  )
+
+  return(list(
+    limiares = limiares,
+    params = params,
+    metadata = meta
+  ))
+}
+
+
 #' Calcula os limiares de precipitação para uma estação usando dados do banco.
 #'
 #' @param con Objeto de conexão com o banco de dados.
@@ -115,8 +191,8 @@ calcular_limiares_estacao_db <- function(con, nome_estacao = NULL, lat = NULL, l
   # Lê os dados da estação do banco
   dados_horarios <- ler_dados_estacao_db(nome_estacao, con)
 
-  if (nrow(dados_horarios) == 0) {
-    warning(paste("Nenhum dado encontrado para a estação", nome_estacao))
+  if (nrow(dados_horarios) < 96) {
+    warning(paste("Nenhum dado encontrado (ou dados insuficientes para 96h) para a estação", nome_estacao))
     return(NULL)
   }
 

@@ -1,0 +1,216 @@
+---
+title: "Relatório Técnico: Metodologia de Cálculo de Limiares de Alerta"
+author: "Análise de Código e Processo"
+format: 
+  dashboard:
+    orientation: columns
+---
+
+```{r}
+#| label: setup
+#| include: false
+#| message: false
+#| warning: false
+
+rm(list = ls())
+
+library(tidyverse)
+library(tweedie)
+library(statmod)
+library(plotly)
+library(DT)
+library(knitr)
+library(leaflet)
+library(sf)
+
+library(crosstalk)
+
+source("/home/thiago/calculo_limiares/R/funcoes_db.R") # Carrega funções do banco
+
+# Conecta ao banco de dados e carrega a API
+con <- conectar_db()
+source("/home/thiago/calculo_limiares/R/api_consultas.R")
+```
+
+# Estações e Metodologia {orientation="columns"}
+
+## Column {width="35%"}
+
+### 1. Metodologia: Distribuição Tweedie
+
+**O Desafio da Precipitação**
+Modelar dados de chuva é complexo porque a variável apresenta uma enorme "massa de probabilidade no zero" (dias secos) e uma distribuição contínua e assimétrica para dias com chuva. A **Distribuição Tweedie** resolve isso de forma elegante modelando ocorrências de Poisson com distruição Gamma, guiada por três parâmetros:
+
+* **$\mu$ (Média)**: Expectativa de volume de chuva.
+* **$\phi$ (Dispersão)**: Variância / espalhamento matemático dos dados.
+* **$p$ (Power / Potência)**: Define a forma matemática (na meteorologia, $1 < p < 2$).
+
+**Implementações e Otimização de Performance**
+Para extrair os limiares quantílicos (65%, 85%, 95% e 99%), testamos dois motores:
+
+1. **Método GLM (Pacote Iterativo):** Utiliza funções tradicionais (`tweedie_profile` e `glm`) para encontrar o parâmetro $p$ por máxima verossimilhança iterativa.
+   * *Problema:* Ao iterar em 10 anos de horas zeradas (secas), o algoritmo entra num vale pesado e sobrecarrega o processador, demorando minutos para concluir uma estação.
+2. **Método Matemático Rápido (Exato):** Baseado na teoria estatística da precipitação, fixamos a potência de variância em $p = 1.5$. Em seguida, para um modelo apenas de intercepto ($y \sim 1$), a média $\mu$ pode ser tratada matematicamente como a **média aritmética** pura dos dados isolados do dia. A dispersão $\phi$ é então resolvida diretamente via cálculo analítico de **Resíduos de Pearson**.
+   * *Vantagem:* Resultado quantílico idêntico ao modelo iterativo (validado neste painel), porém executado em apenas **1 milissegundo**.
+
+### 2. A Função Core em Detalhes
+
+A função unificada `calcular_limiares_estacao()` abstrai todo o ETL pesado dos dados diretos na origem:
+
+* **Busca e Mapeamento:** Aceita a string do nome INMET ou recebe coordenadas lat/lon, calculando a distância *Haversine* na hora para inferir a estação mais próxima (permitindo que redes terceiras usem vizinhos).
+* **Engenharia de Dados:** Varre a pasta da estação dinamicamente, extrai, e trata falhas de sensor (negativos).
+* **Agregação Temporal Rápida:** Utiliza um filtro C++ convolucional em R (`stats::filter`) para criar a soma acumulada de 96 horas. Em seguida, capta pontos às 00h00 para cortar o viés de autocorrelação.
+* **Insights:** Além de parametrizar, a função retorna `Data Início`, `Fim` e volume de registros omitidos para validação científica de integridade dos alertas.
+
+## Column {width="65%"}
+
+```{r}
+#| label: prepare-shared-data
+#| include: false
+
+# Carrega os parâmetros calculados pelo script de treinamento em lote
+tb_params <- readRDS("/home/thiago/calculo_limiares/dados/parametros/tb_params_atual.rds")
+lista_estacoes <- obter_metadados_estacoes_db(con)
+
+# Calcula os limiares em tempo real a partir dos parâmetros para compor a tabela
+tabela_completa <- tb_params %>%
+  rowwise() %>%
+  mutate(
+    `Moderado (mm)` = round(qtweedie(0.65, power = power, mu = mu, phi = phi), 2),
+    `Alto (mm)` = round(qtweedie(0.85, power = power, mu = mu, phi = phi), 2),
+    `Muito Alto (mm)` = round(qtweedie(0.95, power = power, mu = mu, phi = phi), 2),
+    `Altíssimo (mm)` = round(qtweedie(0.99, power = power, mu = mu, phi = phi), 2),
+    `Falhas (%)` = round((n_ausentes / n_dados) * 100, 2),
+    `Anos` = round(n_dados / 8766, 1),
+    `Status` = case_when(
+      `Falhas (%)` > 10 ~ "Inadequada",
+      `Anos` < 10 ~ "Série Curta",
+      TRUE ~ "Robusta"
+    )
+  ) %>%
+  ungroup() %>%
+  select(
+    Estação = station, `Início` = data_inicio, `Fim` = data_fim,
+    `Anos`, `Status`, `Falhas (%)`, `Registros (H)` = n_dados, `Ausentes` = n_ausentes,
+    `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`
+  ) %>%
+  arrange(Estação)
+
+# Invertemos o Join para usar a lista do banco de dados como base. 
+# Assim, as que não passaram do treinamento (< 1 ano) continuam no mapa.
+map_data_with_status <- left_join(lista_estacoes, tabela_completa, by = c("codigo" = "Estação")) %>% 
+  rename(Estação = codigo) %>%
+  mutate(Status = replace_na(Status, "Dados Insuficientes")) %>%
+  filter(!is.na(lat))
+
+shared_data <- SharedData$new(map_data_with_status, key = ~Estação)
+
+pal <- colorFactor(c("#27ae60", "#c0392b", "#f39c12", "#7f8c8d"), domain = c("Robusta", "Inadequada", "Série Curta", "Dados Insuficientes"))
+```
+
+### Mapa Interativo de Estações
+
+Abaixo está a distribuição geográfica de todas as estações físicas do INMET cujos dados brutos foram processados para este relatório.
+
+```{r}
+#| label: mapa-estacoes-filtrado
+#| echo: false
+
+filter_select("status_filter", "Filtrar por Robustez:", shared_data, ~Status, multiple = TRUE)
+
+leaflet(shared_data, width = "100%") %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(
+    ~lon, 
+    ~lat, 
+    popup = ~paste0("<strong>Estação:</strong> ", Estação, "<br>", "<strong>Nome:</strong> ", nome, "<br><strong>Status:</strong> ", Status),
+    label = ~Estação,
+    color = ~pal(Status),
+    radius = 5,
+    stroke = FALSE,
+    fillOpacity = 0.8
+  ) %>%
+  addLegend("bottomright", pal = pal, values = ~Status, title = "Status da Série", opacity = 1)
+```
+
+### 3. Tabela Completa de Estações (Método Matemático)
+
+```{r}
+#| label: tabela-filtrada
+#| echo: false
+
+datatable(shared_data,
+          options = list(pageLength = 10, dom = 'Bfrtip', autoWidth = TRUE),
+          rownames = FALSE,
+          caption = "Limiares e Dados Históricos extraídos dinamicamente dos diretórios CSV.")
+```
+
+# API PostGIS (Exemplos) {orientation="rows" scrolling="true"}
+
+## Row {height="40%"}
+
+### 1. Busca por Nome
+
+```{r}
+#| label: api-nome
+#| echo: true
+res_nome <- consultar_limiares(con, metodo = "nome", nomes = c("BENTO", "CAXIAS"), agregar_estacoes = FALSE)
+datatable(res_nome$metadata, options = list(dom = 't'))
+```
+
+### 2. Busca por Raio Espacial
+
+```{r}
+#| label: api-raio
+#| echo: true
+# Varrendo um raio de 50km no entorno de Porto Alegre
+res_raio <- consultar_limiares(con, metodo = "coordenada", lon = -51.2, lat = -30.0, raio_km = 50)
+datatable(res_raio$metadata, options = list(dom = 't'))
+```
+
+### 3. Interseção Geográfica (WKT)
+
+```{r}
+#| label: api-poly
+#| echo: true
+# Recorte poligonal simulando uma Bacia Hidrográfica ou Município
+wkt_ex <- "POLYGON((-54.0 -30.0, -52.0 -30.0, -52.0 -28.0, -54.0 -28.0, -54.0 -30.0))"
+res_poly <- consultar_limiares(con, metodo = "poligono", wkt_poligono = wkt_ex)
+datatable(res_poly$metadata, options = list(dom = 't'))
+```
+
+## Row {height="60%"}
+
+### 4. Malha Dinâmica (Células de 121 km)
+
+A API solicita ao PostGIS a criação de uma grade `ST_SquareGrid`. As células ativas (que contém estações) são cruzadas instantaneamente, e o modelo **Tweedie** é invocado calculando os parâmetros de Precipitação Média Areal em tempo real na renderização deste relatório.
+
+```{r}
+#| label: api-grade
+#| echo: true
+#| message: false
+#| warning: false
+
+res_grade <- consultar_limiares(con, metodo = "grade", tamanho_grade_km = 121)
+
+if (!is.null(res_grade) && !is.null(res_grade$limiares_agregados)) {
+  grade_sf <- res_grade$metadata %>%
+    left_join(res_grade$limiares_agregados, by = c("i", "j")) %>%
+    st_as_sf(wkt = "wkt_geom", crs = 4326)
+
+  pal_grade <- colorNumeric("YlOrRd", domain = grade_sf$limiar_alto)
+  
+  leaflet(grade_sf) %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+    addPolygons(
+      fillColor = ~pal_grade(limiar_alto),
+      fillOpacity = 0.6,
+      weight = 1,
+      color = "#333",
+      popup = ~paste0("<b>Célula [", i, ",", j, "]</b><br/>Estações: ", estacoes_ids, "<br/>Limiar Alto: ", round(limiar_alto, 1), " mm")
+    ) %>%
+    addLegend("bottomright", pal = pal_grade, values = ~limiar_alto, title = "Limiar Alto (mm)")
+} else {
+  cat("Nenhuma célula gerada ou erro no cálculo.")
+}
+```

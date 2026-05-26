@@ -84,7 +84,7 @@ tabela_completa <- tb_params %>%
     `Anos` = round(n_dados / 8766, 1),
     `Status` = case_when(
       `Falhas (%)` > 10 ~ "Inadequada",
-      `Anos` < 10 ~ "Série Curta",
+      `Anos` < 7 ~ "Série Curta",
       TRUE ~ "Robusta"
     )
   ) %>%
@@ -95,6 +95,11 @@ tabela_completa <- tb_params %>%
     `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`
   ) %>%
   arrange(Estação)
+
+# Exporta as estações robustas para CSV
+tabela_completa %>%
+  filter(Status == "Robusta") %>%
+  write_csv("/home/thiago/calculo_limiares/dados/limiares_robustas.csv")
 
 # Invertemos o Join para usar a lista do banco de dados como base. 
 # Assim, as que não passaram do treinamento (< 1 ano) continuam no mapa.

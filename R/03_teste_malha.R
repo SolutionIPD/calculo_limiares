@@ -61,7 +61,7 @@ resultados_malha <- purrr::map_dfr(1:nrow(malha), function(i) {
   )
 })
 
-dbDisconnect(con)
+DBI::dbDisconnect(con)
 
 cat("===================================================\n")
 cat(sprintf("Teste concluído. %d células possuíam estações ativas.\n", nrow(resultados_malha)))

@@ -27,7 +27,7 @@ library(crosstalk)
 
 source("/home/thiago/calculo_limiares/R/funcoes_db.R") # Carrega funções do banco
 
-# Conecta ao banco de dados
+# Conecta ao banco de dados e carrega a API
 con <- conectar_db()
 source("/home/thiago/calculo_limiares/R/api_consultas.R")
 ```
@@ -110,8 +110,6 @@ pal <- colorFactor(c("#27ae60", "#c0392b", "#f39c12", "#7f8c8d"), domain = c("Ro
 
 ### Mapa Interativo de Estações
 
-Abaixo está a distribuição geográfica de todas as estações físicas do INMET cujos dados brutos foram processados para este relatório.
-
 ```{r}
 #| label: mapa-estacoes-filtrado
 #| echo: false
@@ -163,15 +161,13 @@ Abaixo demonstramos, em tempo real, a diferença entre extrair os limiares utili
 tb_params <- readRDS("/home/thiago/calculo_limiares/dados/parametros/tb_params_atual.rds")
 estacao_teste <- "A840_BENTO GONCALVES"
 
-# Garante que a estação teste seja válida
 if (!estacao_teste %in% tb_params$station) {
-  estacao_teste <- tb_params$station[1]
+  estacao_teste <- tb_params$station
 }
 
 resultado_matematico <- suppressMessages(calcular_limiares_estacao_db(con = con, nome_estacao = estacao_teste, metodo_ajuste = "matematico"))
 
 if (is.null(resultado_matematico)) {
-  # Falback seguro caso a função retorne NULL por qualquer motivo
   resultado_matematico <- list(
     limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = c(0.65, 0.85, 0.95, 0.99), Limiar_mm = c(0,0,0,0)),
     params = list(mu = 1, phi = 1, p = 1.5),
@@ -211,7 +207,7 @@ p <- ggplot(tabela_comparativa, aes(x = Nivel, y = Limiar_mm, fill = Metodo,
                                       "<br>Limiar:", round(Limiar_mm, 2), "mm"))) +
   geom_bar(stat = "identity", position = "dodge", width = 0.6) +
   scale_fill_manual(values = c("Matemático (Exato)" = "#2c3e50", "Pacote GLM (Baseline Histórico)" = "#e74c3c")) +
-  labs(title = paste("Limiares Extraídos - Comparação de Motores Estatísticos:", estacao_teste), 
+  labs(title = paste("Limiares Extraídos - Comparação:", estacao_teste), 
        x = "Nível de Alerta (Quantil)", y = "Acumulado 96h (mm)", fill = "Motor") +
   theme_minimal() +
   theme(legend.position="bottom", 
@@ -225,8 +221,6 @@ ggplotly(p, tooltip = "text")
 
 ### Aderência da Distribuição Tweedie
 
-Para visualizar o comportamento da grande massa de zeros e a assimetria da chuva, o gráfico abaixo sobrepõe o histograma dos dados reais ao ajuste matemático da função de densidade de probabilidade (PDF) Tweedie, focado na estação de Bento Gonçalves.
-
 ```{r}
 #| label: histograma_tweedie
 #| echo: false
@@ -237,45 +231,19 @@ dados_bento <- resultado_matematico$dados
 params <- resultado_matematico$params
 
 if (!is.null(dados_bento) && !is.null(params) && "chuva_acumulada_96h" %in% names(dados_bento)) {
-  
-  # Calcula a densidade máxima do histograma (binwidth = 5) para limitar o eixo Y,
-  # ignorando o pico infinito da curva matemática próximo a zero.
   max_count <- max(table(floor(dados_bento$chuva_acumulada_96h / 5)))
   max_dens <- max_count / (nrow(dados_bento) * 5)
-
-  # Calcula o limite do eixo X (maior valor de chuva arredondado para o fim do último bin de 5mm)
   max_x <- ceiling(max(dados_bento$chuva_acumulada_96h, na.rm = TRUE) / 5) * 5
 
   p_hist <- ggplot(dados_bento, aes(x = chuva_acumulada_96h)) + 
-    geom_histogram(
-      aes(y = after_stat(density)), 
-      binwidth = 5, 
-      boundary = 0,
-      fill = "#3498db", 
-      color = "#154360", 
-      alpha = 1
-    ) +
-    stat_function(
-      fun = function(x) dtweedie(x, power = 1.5, mu = params$mu, phi = params$phi),
-      color = "#e74c3c", 
-      linewidth = 1.2,
-      alpha = 0.5,
-      linetype = "dashed"
-    ) +
+    geom_histogram(aes(y = after_stat(density)), binwidth = 5, boundary = 0, fill = "#3498db", color = "#154360") +
+    stat_function(fun = function(x) dtweedie(x, power = 1.5, mu = params$mu, phi = params$phi),
+                  color = "#e74c3c", linewidth = 1.2, linetype = "dashed") +
     theme_minimal() +
     coord_cartesian(xlim = c(0, max_x), ylim = c(0, max_dens * 1.05)) +
-    labs(
-      title = "Histograma de Precipitação (96h) vs Curva Tweedie Ajustada",
-      x = "Acumulado 96h (mm)", 
-      y = "Densidade"
-    ) +
-    theme(
-      plot.title = element_text(face = "bold", size = 14)
-    )
+    labs(title = "Histograma de Precipitação (96h) vs Curva Tweedie", x = "Acumulado 96h (mm)", y = "Densidade")
   
   ggplotly(p_hist)
-} else {
-  cat("⚠️ **Aviso:** Para visualizar o histograma, assegure-se de expor a série histórica (com a coluna `chuva_acumulada_96h`) e os hiperparâmetros treinados (`mu` e `phi`) na lista de saída da função `calcular_limiares_estacao()`.")
 }
 ```
 
@@ -289,14 +257,166 @@ O sistema atualizou com sucesso a sua arquitetura saindo de "scripts ad-hoc" com
 
 1.  **Criação da API (`plumber`)**: Criar o script `api.R` que irá escutar requisições web. Ao receber um GET `/limiares?lat=-28.93&lon=-51.55` (ex: Veranópolis), ele acionará a função `calcular_limiares_estacao()`, encontrará os parâmetros de Bento Gonçalves e devolverá um JSON limpo com os alertas moderado/alto/altíssimo para o município alvo.
 2.  **Agendamento do Treinamento**: Configurar um `cronjob` (Linux) ou `GitHub Actions` para rodar mensalmente o script `01_processo_treinamento.R`. Como ele utiliza o novo motor matemático, a extração de métricas dezenas de novas pastas será concluída de forma assíncrona em segundos.
-3.  **Transição Dinâmica de Estações do Cemaden**: Como a função já busca por coordenadas (Haversine), à medida em que a prefeitura coletar anos suficientes de chuva em suas estações locais próprias (e.g., Barão), podemos integrá-las aos diretórios inmet\_brutos. A função deixará de "emprestar" parâmetros do vizinho e fará a conta real assim que o acúmulo da série temporal atingir significância.
+3.  **Transição Dinâmica de Estações do Cemaden**: Como a função já busca por coordenadas (Haversine), à medida em que a prefeitura coletar anos suficientes de chuva em suas estações locais próprias (e.g., Barão), podemos integrá-las aos diretórios inmet\_brutos.
 
-# Malha Regional (RS) {orientation="columns"}
+# API PostGIS e Malha Espacial {orientation="columns" scrolling="true"}
 
-## Column {width="100%"}
+## Column {width="30%"}
 
-### Variação Espacial dos Limiares (Grade ~300x300km)
+### 1. Busca por Nome
 
-A imagem abaixo ilustra a variação espacial dos limiares calculados no Rio Grande do Sul. O processo utiliza a **Precipitação Média Areal** (agrupando estações ativas dentro de cada célula da grade) e recalcula os hiperparâmetros da distribuição Tweedie para extrair os quantis críticos de cada região.
+```{r}
+#| label: api-nome
+#| echo: true
+res_nome <- consultar_limiares(con, metodo = "nome", nomes = c("BENTO", "CAXIAS"), agregar_estacoes = FALSE)
+datatable(res_nome$metadata, options = list(dom = 't'))
+```
 
-![](mapa_limiares_malha.png){fig-align="center"}
+### 2. Busca por Raio Espacial
+
+```{r}
+#| label: api-raio
+#| echo: true
+# Varrendo um raio de 50km no entorno de Porto Alegre
+res_raio <- consultar_limiares(con, metodo = "coordenada", lon = -51.2, lat = -30.0, raio_km = 50)
+datatable(res_raio$metadata, options = list(dom = 't'))
+```
+
+### 3. Interseção Geográfica (WKT)
+
+```{r}
+#| label: api-poly
+#| echo: true
+# Recorte poligonal simulando uma Bacia Hidrográfica ou Município
+wkt_ex <- "POLYGON((-54.0 -30.0, -52.0 -30.0, -52.0 -28.0, -54.0 -28.0, -54.0 -30.0))"
+res_poly <- consultar_limiares(con, metodo = "poligono", wkt_poligono = wkt_ex)
+datatable(res_poly$metadata, options = list(dom = 't'))
+```
+
+## Column {width="70%"}
+
+```{r}
+#| label: preparation-maps
+#| include: false
+res_grade <- consultar_limiares(con, metodo = "grade", tamanho_grade_km = 121)
+
+grade_sf <- NULL
+poly_sf <- st_as_sfc(wkt_ex, crs = 4326)
+
+if (!is.null(res_grade) && !is.null(res_grade$limiares_agregados)) {
+  grade_sf <- res_grade$metadata %>%
+    left_join(res_grade$limiares_agregados, by = c("i", "j")) %>%
+    st_as_sf(wkt = "wkt_geom", crs = 4326)
+}
+
+gerar_mapa <- function(grade, poligono, variavel, paleta, titulo) {
+  if(is.null(grade)) return(htmltools::HTML("Nenhum dado gerado."))
+  
+  valores <- grade[[variavel]]
+  pal <- colorNumeric(paleta, domain = valores, na.color = "transparent")
+  
+  leaflet(grade) %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+    addPolygons(
+      fillColor = ~pal(valores),
+      fillOpacity = 0.6, weight = 1, color = "#333",
+      popup = ~paste0("<b>Célula [", i, ",", j, "]</b><br/>Estações: ", estacoes_ids, "<br/>Limiar: ", round(valores, 1), " mm")
+    ) %>%
+    # FEATURE SOLICITADA: Adicionando o polígono do Exemplo 3 no mapa dinâmico para visualização
+    addPolygons(
+      data = poligono, 
+      color = "#2980b9", weight = 4, fillOpacity = 0.2, 
+      popup = "Área de Interseção do Exemplo 3"
+    ) %>%
+    addLegend("bottomright", pal = pal, values = valores, title = titulo)
+}
+```
+
+### Row {height="50%"}
+
+#### Limiar Moderado
+```{r}
+#| echo: false
+gerar_mapa(grade_sf, poly_sf, "limiar_moderado", "YlGn", "Moderado (mm)")
+```
+
+#### Limiar Alto
+```{r}
+#| echo: false
+gerar_mapa(grade_sf, poly_sf, "limiar_alto", "YlOrRd", "Alto (mm)")
+```
+
+### Row {height="50%"}
+
+#### Limiar Muito Alto
+```{r}
+#| echo: false
+gerar_mapa(grade_sf, poly_sf, "limiar_muito_alto", "OrRd", "M. Alto (mm)")
+```
+
+#### Limiar Altíssimo
+```{r}
+#| echo: false
+gerar_mapa(grade_sf, poly_sf, "limiar_altissimo", "Reds", "Altíssimo (mm)")
+```
+
+# Estudo de Caso: Porto Alegre {orientation="columns"}
+
+## Column {width="40%"}
+
+### Precipitação Média Areal: Porto Alegre
+
+Neste estudo de caso, utilizamos um polígono (bounding box) representando a região de Porto Alegre para calcular a **Precipitação Média Areal**. 
+
+O motor espacial (PostGIS) busca todas as estações dentro desta área, calcula a média horária ponderada (ignorando estações com falhas pontuais) e ajusta a distribuição Tweedie para encontrar limiares únicos e robustos para a região como um todo.
+
+```{r}
+#| label: poa-calc
+#| echo: false
+#| message: false
+#| warning: false
+
+# Busca o polígono real do município de Porto Alegre via geobr (IBGE: 4314902)
+poa_sf <- geobr::read_municipality(code_muni = 4314902, showProgress = FALSE) %>% 
+  st_transform(4326)
+wkt_poa <- st_as_text(st_geometry(poa_sf))
+
+res_poa <- consultar_limiares(con, metodo = "poligono", wkt_poligono = wkt_poa, agregar_estacoes = TRUE)
+
+if (!is.null(res_poa) && !is.null(res_poa$limiares_agregados)) {
+  datatable(res_poa$limiares_agregados$limiares, options = list(dom = 't', paging = FALSE), rownames = FALSE, caption = "Limiares Agregados (POA)")
+} else {
+  htmltools::HTML("<em>Dados insuficientes ou sem estações na região informada.</em>")
+}
+```
+
+### Estações Encontradas na Área
+
+```{r}
+#| label: poa-estacoes
+#| echo: false
+
+if (!is.null(res_poa)) {
+  datatable(res_poa$metadata %>% select(Código = codigo, Nome = nome), options = list(dom = 't', paging = FALSE), rownames = FALSE)
+}
+```
+
+## Column {width="60%"}
+
+### Mapa da Região
+
+```{r}
+#| label: poa-mapa
+#| echo: false
+
+mapa_poa <- leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(data = poa_sf, color = "#e67e22", weight = 2, fillOpacity = 0.2, popup = "Área de Análise: Porto Alegre")
+
+if (!is.null(res_poa)) {
+  estacoes_poa_sf <- st_as_sf(res_poa$metadata, wkt = "wkt_geom", crs = 4326)
+  mapa_poa <- mapa_poa %>% addCircleMarkers(data = estacoes_poa_sf, color = "#2980b9", radius = 6, popup = ~nome, label = ~codigo, fillOpacity = 0.8)
+}
+
+mapa_poa
+```

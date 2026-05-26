@@ -45,7 +45,7 @@ conectar_db <- function() {
     )
   }
   
-  DBI::dbConnect(
+  con <- DBI::dbConnect(
     RPostgres::Postgres(),
     host = Sys.getenv("DB_HOST", "127.0.0.1"),
     port = Sys.getenv("DB_PORT", 5432),
@@ -53,6 +53,15 @@ conectar_db <- function() {
     user = Sys.getenv("DB_USER"),
     password = Sys.getenv("DB_PASSWORD")
   )
+  
+  # Garante que o banco está populado. Se 'estacoes' não existir, roda a carga.
+  if (!DBI::dbExistsTable(con, "estacoes")) {
+    message("Tabela 'estacoes' não encontrada. Iniciando carga automática do banco (ETL)...")
+    source("/home/thiago/calculo_limiares/R/02_carga_banco.R", local = new.env())
+    message("Carga automática concluída com sucesso!")
+  }
+  
+  return(con)
 }
 
 #' Obtém metadados de todas as estações do banco de dados.

@@ -218,7 +218,7 @@ calcular_limiares_estacao <- function(nome_estacao = NULL, lat_busca = NULL, lon
     # Solução exata e super rápida para intercepto
     p_otimo <- 1.5
     mu_otimo <- mean(y)
-    phi_otimo <- sum((y - mu_otimo)^2 / (mu_otimo^p_otimo)) / (length(y) - 1)
+    phi_otimo <- var(y) / (mu_otimo^p_otimo)
     
   } else {
     # Padrão: Ajuste via funções do pacote tweedie (glm + tweedie_profile)

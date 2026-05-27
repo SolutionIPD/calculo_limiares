@@ -1,7 +1,6 @@
 # ==============================================================================
 # FUNCOES_DB.R
 #
-# Autor: Gemini Code Assist
 #
 # Descrição:
 # Este arquivo contém as funções core para o cálculo de limiares de alerta
@@ -141,9 +140,8 @@ calcular_limiares_poligono_db <- function(con, wkt_poligono, cortes = c(0.65, 0.
   # ---- Cálculo dos Parâmetros Tweedie (Método Matemático Exato) ----
   params <- list()
   params$p <- 1.5
-  params$mu <- mean(chuva_positiva)
-  residuos_pearson <- (chuva_positiva - params$mu) / (params$mu^(params$p/2))
-  params$phi <- sum(residuos_pearson^2) / (length(chuva_positiva) - 1)
+  params$mu <- mean(dados_diarios$chuva_acumulada_96h)
+  params$phi <- var(dados_diarios$chuva_acumulada_96h) / (params$mu^params$p)
 
   # ---- Cálculo dos Limiares ----
   limiares <- tibble(
@@ -230,11 +228,10 @@ calcular_limiares_estacao_db <- function(con, nome_estacao = NULL, lat = NULL, l
   params <- list()
   if (metodo_ajuste == "matematico") {
     params$p <- 1.5
-    params$mu <- mean(chuva_positiva)
-    residuos_pearson <- (chuva_positiva - params$mu) / (params$mu^(params$p/2))
-    params$phi <- sum(residuos_pearson^2) / (length(chuva_positiva) - 1)
+    params$mu <- mean(dados_diarios$chuva_acumulada_96h)
+    params$phi <- var(dados_diarios$chuva_acumulada_96h) / (params$mu^params$p)
   } else { # Método "pacote"
-    fit <- tweedie.profile(chuva_acumulada_96h ~ 1, data = dados_diarios, p.vec = seq(1.1, 1.9, 0.1), do.plot = FALSE)
+    invisible(capture.output(fit <- tweedie.profile(chuva_acumulada_96h ~ 1, data = dados_diarios, p.vec = seq(1.1, 1.9, 0.1), do.plot = FALSE)))
     params$p <- fit$p.max
     params$phi <- fit$phi.max
     modelo_glm <- glm(chuva_acumulada_96h ~ 1, data = dados_diarios, family = tweedie(var.power = params$p, link.power = 0))

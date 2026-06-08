@@ -34,7 +34,7 @@ library(tidyverse)
 library(lubridate)
 
 # Funções auxiliares do projeto (para ler metadados e dados dos CSVs)
-source("/home/thiago/calculo_limiares/R/funcoes_calculo.R")
+source("/home/thiago/calculo_limiares/R/legado/funcoes_calculo.R")
 
 # Diretório onde os CSVs estão organizados por estação
 dir_brutos <- "/home/thiago/calculo_limiares/dados/inmet_brutos"

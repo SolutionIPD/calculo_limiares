@@ -47,16 +47,16 @@ conectar_db <- function() {
   con <- DBI::dbConnect(
     RPostgres::Postgres(),
     host = Sys.getenv("DB_HOST", "127.0.0.1"),
-    port = Sys.getenv("DB_PORT", 5432),
-    dbname = Sys.getenv("DB_NAME"),
-    user = Sys.getenv("DB_USER"),
-    password = Sys.getenv("DB_PASSWORD")
+    port = as.integer(Sys.getenv("DB_PORT", 5433)),
+    dbname = Sys.getenv("DB_NAME", "limiares_db"),
+    user = Sys.getenv("DB_USER", "geotech"),
+    password = Sys.getenv("DB_PASSWORD", "geotech")
   )
   
   # Garante que o banco está populado. Se 'estacoes' não existir, roda a carga.
   if (!DBI::dbExistsTable(con, "estacoes")) {
     message("Tabela 'estacoes' não encontrada. Iniciando carga automática do banco (ETL)...")
-    source("/home/thiago/calculo_limiares/R/02_carga_banco.R", local = new.env())
+    source("/home/thiago/calculo_limiares/R/legado/02_carga_banco.R", local = new.env())
     message("Carga automática concluída com sucesso!")
   }
   

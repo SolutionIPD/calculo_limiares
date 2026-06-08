@@ -161,19 +161,21 @@ Abaixo demonstramos, em tempo real, a diferença entre extrair os limiares utili
 #| echo: false
 #| message: false
 #| warning: false
-#| output: false
 
 # Carrega novamente para ter acesso ao tb_params no escopo deste chunk
 tb_params <- readRDS("/home/thiago/calculo_limiares/dados/parametros/tb_params_atual.rds")
-estacao_teste <- "A840_BENTO GONCALVES"
+lista_estacoes <- obter_metadados_estacoes_db(con)
 
-if (!estacao_teste %in% tb_params$station) {
-  estacao_teste <- tb_params$station[1]
+# Busca a estação de Bento Gonçalves pelo nome ou código no banco, com fallback para a primeira da lista
+estacao_teste <- lista_estacoes$codigo[grepl("BENTO GONCALVES", lista_estacoes$nome, ignore.case = TRUE) | grepl("BENTO GONCALVES", lista_estacoes$codigo, ignore.case = TRUE)][1]
+
+if (is.na(estacao_teste)) {
+  estacao_teste <- lista_estacoes$codigo[1]
 }
 
 resultado_matematico <- suppressMessages(calcular_limiares_estacao_db(con = con, nome_estacao = estacao_teste, metodo_ajuste = "matematico"))
 
-if (is.null(resultado_matematico)) {
+if (is.null(resultado_matematico) || is.null(resultado_matematico$limiares) || nrow(resultado_matematico$limiares) == 0) {
   resultado_matematico <- list(
     limiares = tibble(Nivel = c("Moderado", "Alto", "Muito Alto", "Altíssimo"), Percentil = c(0.65, 0.85, 0.95, 0.99), Limiar_mm = c(0,0,0,0)),
     params = list(mu = 1, phi = 1, p = 1.5),
@@ -185,7 +187,7 @@ if (is.null(resultado_matematico)) {
 # Obs: se a sua função aceitar "glm" em vez de "pacote", basta alterar abaixo
 resultado_pacote_baseline <- suppressMessages(calcular_limiares_estacao_db(con = con, nome_estacao = estacao_teste, metodo_ajuste = "pacote"))
 
-if (is.null(resultado_pacote_baseline)) {
+if (is.null(resultado_pacote_baseline) || is.null(resultado_pacote_baseline$limiares) || nrow(resultado_pacote_baseline$limiares) == 0) {
   resultado_pacote_baseline <- resultado_matematico
 }
 
@@ -194,8 +196,11 @@ tabela_comparativa <- bind_rows(
   resultado_pacote_baseline$limiares %>% mutate(Metodo = "Pacote GLM (Baseline Histórico)")
 ) %>% mutate(Estacao = estacao_teste)
 
+niveis_esperados <- c("Moderado", "Alto", "Muito Alto", "Altíssimo")
 tabela_comparativa$Nivel <- factor(tabela_comparativa$Nivel, 
-                                   levels = c("Moderado", "Alto", "Muito Alto", "Altíssimo"))
+                                   levels = unique(c(niveis_esperados, tabela_comparativa$Nivel)))
+
+datatable(tabela_comparativa, options = list(dom = 't', paging = FALSE), rownames = FALSE, caption = "Comparativo de Parâmetros e Limiares")
 ```
 
 ### Gráfico Comparativo
@@ -238,15 +243,18 @@ ggplotly(p, tooltip = "text")
 dados_bento <- resultado_matematico$dados 
 params <- resultado_matematico$params
 
-if (!is.null(dados_bento) && !is.null(params) && "chuva_acumulada_96h" %in% names(dados_bento)) {
+if (!is.null(dados_bento) && !is.null(params) && "chuva_acumulada_96h" %in% names(dados_bento) && nrow(dados_bento) > 0) {
   max_count <- max(table(floor(dados_bento$chuva_acumulada_96h / 5)))
   max_dens <- max_count / (nrow(dados_bento) * 5)
   max_x <- ceiling(max(dados_bento$chuva_acumulada_96h, na.rm = TRUE) / 5) * 5
 
-  p_hist <- ggplot(dados_bento, aes(x = chuva_acumulada_96h)) + 
-    geom_histogram(aes(y = after_stat(density)), binwidth = 5, boundary = 0, fill = "#3498db", color = "#154360") +
-    stat_function(fun = function(x) dtweedie(x, power = 1.5, mu = params$mu, phi = params$phi),
-                  color = "#e74c3c", linewidth = 1.2, linetype = "dashed") +
+  # Gera os pontos da curva matematicamente e remove o aes() global para não bugar o plotly
+  curva_df <- data.frame(x_curva = seq(0.1, max_x, length.out = 150))
+  curva_df$y_curva <- dtweedie(curva_df$x_curva, power = 1.5, mu = params$mu, phi = params$phi)
+  
+  p_hist <- ggplot() + 
+    geom_histogram(data = dados_bento, aes(x = chuva_acumulada_96h, y = after_stat(density)), binwidth = 5, boundary = 0, fill = "#3498db", color = "#154360") +
+    geom_line(data = curva_df, aes(x = x_curva, y = y_curva), color = "#e74c3c", linewidth = 1.2, linetype = "dashed") +
     theme_minimal() +
     coord_cartesian(xlim = c(0, max_x), ylim = c(0, max_dens * 1.05)) +
     labs(title = "Histograma de Precipitação (96h) vs Curva Tweedie", x = "Acumulado 96h (mm)", y = "Densidade")

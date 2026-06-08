@@ -13,10 +13,11 @@ A estrutura do repositório foi desenhada para separar claramente a ingestão de
 │   └── parametros/          # Resultados do treinamento: tb_params_atual.rds
 ├── R/
 │   ├── 01_processo_treinamento_db.R # Script de ETL: lê do banco, ajusta modelos e salva o .rds
-│   ├── 02_carga_banco.R             # Script de carga única: migra CSVs para o PostGIS
 │   ├── api_consultas.R              # Motor de consultas espaciais via PostGIS (para a API)
-│   ├── funcoes_calculo.R            # (LEGADO) Core: funções baseadas em arquivos CSV
-│   └── funcoes_db.R                 # Core (DB): funções que acessam o banco de dados
+│   ├── funcoes_db.R                 # Core (DB): funções que acessam o banco de dados
+│   └── legado/
+│       ├── 02_carga_banco.R         # (LEGADO) Script de carga única: migra CSVs para o PostGIS
+│       └── funcoes_calculo.R        # (LEGADO) Core antigo baseado em CSVs
 ├── relatorios/
 │   ├── relatorio_tecnico.qmd      # Dashboard técnico interativo da metodologia
 │   └── relatorio_fontes_dados.qmd # Análise crítica das fontes de dados

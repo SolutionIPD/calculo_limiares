@@ -3,3 +3,5 @@ DB_PORT=5433
 DB_NAME=limiares_db
 DB_USER=geotech
 DB_PASSWORD=geotech
+MONGO_URL="cole_aqui_a_url_que_seu_chefe_passar"
+MONGO_DB="cole_aqui_o_nome_do_banco"

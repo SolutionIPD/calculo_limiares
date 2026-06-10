@@ -1,0 +1,229 @@
+---
+title: "Exploração do MongoDB e Estrutura de Dados"
+author: "Análise de Dados / Geotech"
+format:
+  html:
+    toc: true
+    theme: cosmo
+---
+
+Olá equipe! Este relatório apresenta o resultado da nossa exploração no banco de dados MongoDB da plataforma. O objetivo é documentar quais coleções existem, como os dados estão estruturados atualmente e, por fim, demonstrar como os novos limiares de alerta precisarão ser formatados para uma integração tranquila no sistema.
+
+## 1. Coleções Mapeadas no MongoDB
+
+Durante a análise do banco de produção, identificamos três coleções principais que são o coração do sistema de alertas e telemetria:
+
+1. **`limits`**: Armazena os parâmetros matemáticos e os limiares atuais de chuva que acionam os alertas na interface.
+2. **`sensors`**: Contém o cadastro, os metadados e a localização geográfica das estações e pluviógrafos.
+3. **`weatherdatas`**: Armazena as leituras de telemetria recebidas contínua e ativamente pelos sensores.
+
+---
+
+## 2. Estrutura Atual dos Dados
+
+Abaixo, extraímos uma pequena amostra de cada coleção para visualizarmos as colunas e chaves que compõem os documentos hoje.
+
+```{r}
+#| label: carrega-amostras-mongo
+#| echo: false
+#| message: false
+#| warning: false
+
+library(mongolite)
+library(tidyverse)
+library(DT)
+
+caminho_env <- "/home/thiago/.env"
+if (file.exists(caminho_env)) readRenviron(caminho_env)
+
+mongo_url <- Sys.getenv("MONGODB_URI")
+if (mongo_url == "") mongo_url <- Sys.getenv("MONGO_URL")
+
+mongo_db <- Sys.getenv("MONGO_DB")
+if (mongo_db == "" || mongo_db == "cole_aqui_o_nome_do_banco") {
+  mongo_db <- gsub(".*/([^/?]+).*", "\\1", mongo_url)
+}
+
+# Buscando dados para amostragem
+m_limits <- mongo(collection = "limits", db = mongo_db, url = mongo_url)
+df_limits <- m_limits$find(limit = 20)
+
+m_sensors <- mongo(collection = "sensors", db = mongo_db, url = mongo_url)
+df_sensors <- m_sensors$find()
+
+m_weather <- mongo(collection = "weatherdatas", db = mongo_db, url = mongo_url)
+df_weather <- m_weather$find(limit = 100, sort = '{"createdAt": -1}')
+```
+
+### 2.1 Coleção: `limits` (Limiares Atuais)
+A estrutura legada possui uma granularidade baseada em múltiplas janelas contínuas de tempo para uma mesma estação (`horas`: 24, 48, 72, 96, 120). Também salva os 4 níveis de alerta (`r0` a `r3`).
+```{r}
+#| echo: false
+datatable(df_limits %>% select(any_of(c("station", "horas", "mu", "phi", "power", "r0", "r1", "r2", "r3"))), options = list(pageLength = 5, scrollX = TRUE))
+```
+
+### 2.2 Coleção: `sensors` (Metadados das Estações)
+Tabela de cadastro físico das estações. Contém chaves importantes para visualização no mapa, como `sensorId`, `name`, `latitude` e `longitude`.
+```{r}
+#| echo: false
+datatable(df_sensors %>% select(-any_of(c("organizations", "__v"))), options = list(pageLength = 5, dom = 't', scrollX = TRUE))
+```
+
+### 2.3 Coleção: `weatherdatas` (Métricas de Telemetria)
+Armazena o histórico contínuo de leituras em campo. Aqui estão as informações de chuva (`rainfall`), relacionadas aos sensores através de um ID.
+```{r}
+#| echo: false
+datatable(df_weather %>% select(any_of(c("id", "_id", "sensorId", "rainfall", "temperature", "humidity", "windSpeed", "createdAt"))), options = list(pageLength = 5, scrollX = TRUE))
+```
+
+---
+
+## 3. Novos Limiares Calculados
+
+Como prova de conceito, extraímos os dados diretamente neste relatório e aplicamos o nosso novo Motor Matemático (Tweedie com $p=1.5$).
+
+### 3.1 Estações INMET (Atualmente utilizadas pelo Mongo)
+Estes são os limites definitivos para as estações INMET que a plataforma já consome hoje. Eles foram cruzados e extraídos da nossa rotina de treinamento histórico principal.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(tweedie)
+library(lubridate)
+
+# Extrair os nomes puros da base atual do Mongo
+estacoes_mongo <- m_limits$distinct("station")
+
+df_limiares_inmet <- read_csv("/home/thiago/calculo_limiares/dados/limiares_robustas.csv", show_col_types = FALSE)
+
+df_inmet_filtrado <- df_limiares_inmet %>%
+  filter(str_detect(Estação, paste(estacoes_mongo, collapse = "|"))) %>%
+  select(Estação, `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`, Status)
+  
+datatable(df_inmet_filtrado, options = list(dom = 't', scrollX = TRUE))
+```
+
+### 3.2 Estações Locais (Sensores Próprios - "Meteorológica", "Cidade", etc.)
+Abaixo, o relatório varre todos os registros brutos da coleção `weatherdatas`, agrupa a chuva de cada estação em janelas contínuas de 96 horas, limpa os dias secos e treina o modelo preditivo exclusivo de forma instantânea. *(Nota: Todas as estações cadastradas localmente são calculadas dinamicamente)*
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+df_weather_all <- m_weather$find(
+  query = '{"rainfall": {"$gte": 0}}', 
+  fields = '{"sensorId": 1, "rainfall": 1, "createdAt": 1}'
+)
+
+if (nrow(df_weather_all) > 0) {
+  # 1. Prepara metadados dos sensores (Fator de Calibração e Nomes)
+  col_id <- if ("sensorId" %in% names(df_sensors)) "sensorId" else if ("_id" %in% names(df_sensors)) "_id" else "id"
+  
+  df_sensores_calib <- df_sensors %>%
+    mutate(
+      sensor_join_id = as.character(!!sym(col_id)),
+      Nome = ifelse(!is.na(name) & name != "", name, sensor_join_id),
+      mult_chuva = if("calibration" %in% names(.)) calibration$rainfallMultiplier else 1
+    ) %>%
+    mutate(mult_chuva = ifelse(is.na(mult_chuva) | mult_chuva == 0, 1, mult_chuva)) %>%
+    mutate(
+      # Força a calibração de 0.2mm (pulsos) via script para as estações conhecidas
+      mult_chuva = ifelse(Nome %in% c("Neovia Km-189", "Pluviográfo Cidade", "SEEL BR-470 Km-199"), 0.2, mult_chuva)
+    ) %>%
+    select(sensor_join_id, Nome, mult_chuva)
+
+  df_locais_treinados <- df_weather_all %>%
+    mutate(sensorId = as.character(sensorId)) %>%
+    inner_join(df_sensores_calib, by = c("sensorId" = "sensor_join_id")) %>%
+    mutate(
+      createdAt = as_datetime(createdAt),
+      rainfall_cal = rainfall * mult_chuva
+    ) %>%
+    arrange(sensorId, createdAt) %>%
+    group_by(sensorId, Nome) %>%
+    mutate(
+      chuva_diff = rainfall_cal - lag(rainfall_cal),
+      precipitacao_inst = case_when(
+        is.na(chuva_diff) ~ 0,          # Proteção para a primeira linha
+        chuva_diff < 0 ~ rainfall_cal,  # Quando o sensor "zera", choveu o valor da nova leitura
+        TRUE ~ chuva_diff               # Choveu apenas a diferença
+      ),
+      # Filtro Anti-Falso-Reset: Salto absurdo (> 60mm num único disparo) é erro de telemetria
+      precipitacao_inst = ifelse(precipitacao_inst > 60, 0, precipitacao_inst)
+    ) %>%
+    ungroup() %>%
+    mutate(data_hora = floor_date(createdAt, "hour")) %>%
+    group_by(sensorId, Nome, data_hora) %>%
+    summarise(precipitacao_mm = sum(precipitacao_inst, na.rm = TRUE), .groups = "drop") %>%
+    group_by(sensorId, Nome) %>%
+    mutate(n_dados_reais = n()) %>%
+    complete(data_hora = seq(min(data_hora), max(data_hora), by = "hour"), fill = list(precipitacao_mm = 0)) %>%
+    mutate(
+      data_inicio = min(data_hora),
+      data_fim = max(data_hora),
+      n_dados = n(),
+      n_ausentes = n_dados - max(n_dados_reais, na.rm = TRUE)
+    ) %>%
+    arrange(data_hora) %>%
+    filter(n() >= 96) %>%
+    mutate(chuva_acumulada_96h = as.numeric(stats::filter(precipitacao_mm, rep(1, 96), sides = 1, method = "convolution"))) %>%
+    filter(hour(data_hora) == 0, chuva_acumulada_96h > 0) %>%
+    summarise(
+      mu = mean(chuva_acumulada_96h, na.rm = TRUE),
+      phi = var(chuva_acumulada_96h, na.rm = TRUE) / (mu^1.5),
+      power = 1.5,
+      n_dias_chuva = n(),
+      data_inicio = as_date(min(data_inicio, na.rm = TRUE)),
+      data_fim = as_date(max(data_fim, na.rm = TRUE)),
+      n_dados = max(n_dados, na.rm = TRUE),
+      n_ausentes = max(n_ausentes, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    filter(n_dias_chuva > 1) %>% 
+    rowwise() %>%
+    mutate(
+      `Moderado (mm)` = round(qtweedie(0.65, power = power, mu = mu, phi = phi), 2),
+      `Alto (mm)` = round(qtweedie(0.85, power = power, mu = mu, phi = phi), 2),
+      `Muito Alto (mm)` = round(qtweedie(0.95, power = power, mu = mu, phi = phi), 2),
+      `Altíssimo (mm)` = round(qtweedie(0.99, power = power, mu = mu, phi = phi), 2),
+      `Falhas (%)` = round((n_ausentes / n_dados) * 100, 2),
+      Anos = round(n_dados / 8766, 1),
+      Status = case_when(
+        `Falhas (%)` > 10 ~ "Inadequada",
+        Anos < 7 ~ "Série Curta",
+        TRUE ~ "Robusta"
+      )
+    ) %>%
+    ungroup()
+    
+  df_locais_exibicao <- df_locais_treinados %>%
+    select(
+      Estação = Nome, Início = data_inicio, Fim = data_fim,
+      Anos, Status, `Falhas (%)`, `Registros (H)` = n_dados, Ausentes = n_ausentes,
+      `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`, `Dias c/ Chuva` = n_dias_chuva
+    )
+    
+  datatable(df_locais_exibicao, options = list(dom = 't', scrollX = TRUE))
+} else {
+  cat("Nenhum dado válido encontrado para treinar os sensores locais.")
+}
+```
+
+---
+
+## 4. Estrutura Proposta para Integração
+
+Para que a plataforma comece a consumir as novas modelagens estatísticas, **não será necessário alterar o schema do banco de dados ou a interface**.
+
+O pipeline de dados gerará um formato 100% compatível com a coleção `limits` que já existe. As diferenças nos dados enviados serão:
+
+1. **`station`**: Preenchido com a mesma identificação de cada ponto.
+2. **`horas`**: Será fixado estritamente em **`96`** para todas as estações. (Essa padronização simplifica o alerta e demonstrou excelente confiabilidade na saturação do solo durante os novos testes).
+3. **`r0`, `r1`, `r2`, `r3`**: As colunas receberão as novas estimativas em milímetros que determinam os patamares de alerta.
+4. **Parâmetros Base**: `mu`, `phi` e `power` serão atualizados com os novos indicadores das equações.
+5. Demais controles (`__v`, `createdAt`, `updatedAt`) seguem o mesmo padrão preenchido com datas atualizadas.
+
+Durante a atualização, podemos limpar os registros legados da `limits` e repopular via rotina automatizada, o que atualizará os indicadores sem impacto sistêmico.

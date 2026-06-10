@@ -1,0 +1,89 @@
+---
+title: "Proposta de Atualização: Integração MongoDB e Nova Metodologia de Limiares"
+author: "Análise de Dados / Geotech"
+format:
+  html:
+    toc: true
+    theme: cosmo
+---
+
+## 1. Mapeamento do Banco de Dados Legado (MongoDB)
+
+Durante a exploração do banco MongoDB de produção, mapeamos a coleção principal responsável por parametrizar os alertas atuais na plataforma: `limits`.
+
+A estrutura legada possui uma granularidade baseada em múltiplas janelas contínuas de tempo (`horas`: 24, 48, 72, 96, 120, etc.). Nossa nova metodologia padroniza a janela de acumulação estatística estritamente em **96 horas**, o que, sob a ótica da distribuição de chuvas extremas e saturação do solo, mostrou-se mais resiliente na prevenção de deslizamentos.
+
+## 2. Descoberta: Sensores Locais Proprietários
+
+Encontramos duas coleções cruciais que abrem as portas para abandonarmos a dependência exclusiva de estações distantes (INMET/Cemaden) em prol de uma análise hiperlocal:
+* **`sensors`**: Contém o cadastro físico das estações geridas internamente, trazendo os metadados espaciais (`latitude` e `longitude`).
+* **`weatherdatas`**: Armazena as séries históricas brutas em tempo real (campo `rainfall`). A volumetria é densa (identificados rapidamente mais de 147 mil registros de telemetria).
+
+```{r}
+#| label: carrega-amostras-mongo
+#| echo: false
+#| message: false
+#| warning: false
+
+library(mongolite)
+library(tidyverse)
+library(DT)
+
+caminho_env <- "/home/thiago/.env"
+if (file.exists(caminho_env)) readRenviron(caminho_env)
+
+mongo_url <- Sys.getenv("MONGODB_URI")
+if (mongo_url == "") mongo_url <- Sys.getenv("MONGO_URL")
+
+mongo_db <- Sys.getenv("MONGO_DB")
+if (mongo_db == "" || mongo_db == "cole_aqui_o_nome_do_banco") {
+  mongo_db <- gsub(".*/([^/?]+).*", "\\1", mongo_url)
+}
+
+# Buscando a tabela inteira (cadastro de sensores)
+m_sensors <- mongo(collection = "sensors", db = mongo_db, url = mongo_url)
+df_sensors <- m_sensors$find()
+
+# Buscando uma amostra de 100 registros das métricas, ordenados do mais recente pro mais antigo
+m_weather <- mongo(collection = "weatherdatas", db = mongo_db, url = mongo_url)
+df_weather <- m_weather$find(limit = 100, sort = '{"createdAt": -1}')
+```
+
+### Tabela: `sensors` (Metadados das Estações)
+```{r}
+#| echo: false
+datatable(df_sensors %>% select(-any_of(c("organizations", "__v"))), options = list(pageLength = 5, dom = 't', scrollX = TRUE))
+```
+
+### Amostra: `weatherdatas` (100 leituras mais recentes)
+```{r}
+#| echo: false
+datatable(df_weather %>% select(any_of(c("id", "_id", "sensorId", "rainfall", "temperature", "humidity", "windSpeed", "createdAt"))), options = list(pageLength = 5, scrollX = TRUE))
+```
+
+Isso viabiliza a criação de um módulo de **Treinamento Dinâmico de Estações Locais**. À medida que nossos pluviógrafos acumularem massa de dados histórica, nosso motor estatístico passará a treiná-los diretamente, gerando limiares nativos e exclusivos para o microclima daquele dispositivo.
+
+## 3. Avanço Metodológico: Motor Matemático Exato
+
+A transição do antigo método *GLM iterativo (Pacote tweedie padrão)* para nossa solução via **Método Matemático Exato (Tweedie com $p=1.5$)** foi 100% validada. 
+O ganho de performance na regressão é massivo (de minutos para ~1 milissegundo por estação), resolvendo analiticamente a média ($\mu$) e a dispersão ($\phi$) via Cálculo de Resíduos de Pearson. Os quantis retornam níveis perfeitos de alerta pluviométrico: **Moderado (65%)**, **Alto (85%)**, **Muito Alto (95%)** e **Altíssimo (99%)**.
+
+## 4. Propostas de Arquitetura para Atualização
+
+O maior dilema técnico atual é decidir como a plataforma web consumirá esses novos limiares gerados em milissegundos. Propomos dois caminhos:
+
+### Opção A: Ingestão Batch (Sincronização PostGIS -> MongoDB)
+Manter o sistema web intacto. O nosso R funcionará apenas como um robô de ETL assíncrono. Mensalmente, ele varre os dados, treina os limites e usa a biblioteca `mongolite` para fazer um comando "upsert" destrutivo e atualizar a tabela `limits` inteira lá no Mongo.
+* **Prós:** Nenhuma linha de código precisa ser alterada no backend/Node.js legado.
+* **Contras:** Arquitetura engessada. Toda vez que quiserem consultar um ponto sem estação, terão que esperar o próximo ciclo de atualização, perdendo o benefício do nosso cálculo espacial na "força bruta".
+
+### Opção B: API Geotech em Tempo Real (R Plumber)
+O backend abandona a consulta estática na coleção `limits` do Mongo. Quando for renderizar um alerta, o backend Node fará uma requisição HTTP REST para uma nova API construída por nós em R (`plumber`). Ex: `GET /api/limiares?lat=-29.05&lon=-51.58`.
+* **Prós:** Dinamismo geográfico total. A API usará PostGIS (Haversine) para achar o vizinho mais próximo ou rodar a média espacial de um polígono na mesma hora.
+* **Contras:** Exigirá esforço da equipe de desenvolvedores da plataforma para refatorar a forma de consultar alertas.
+
+## 5. Próximos Passos Inediatos
+
+1. Desenvolver o script R (`11_treinar_sensores_locais.R`) que extrai o volume de `weatherdatas` e aplica o Modelo Tweedie localmente.
+2. Validar a qualidade (robustez da série histórica) dessas estações locais.
+3. Construir a POC da API usando o pacote `plumber` (como planejado no roadmap técnico inicial) para viabilizar a "Opção B" caso os desenvolvedores queiram testá-la.

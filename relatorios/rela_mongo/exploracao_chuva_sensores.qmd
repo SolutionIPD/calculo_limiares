@@ -1,0 +1,120 @@
+---
+title: "Exploração de Chuva - Sensores Locais"
+author: "Análise de Dados / Geotech"
+format:
+  html:
+    toc: true
+    theme: cosmo
+    code-fold: true
+---
+
+## 1. Introdução
+
+Este relatório tem como objetivo explorar as séries temporais de precipitação dos nossos sensores locais (armazenados no MongoDB).
+O intuito é visualizar o comportamento dos dados, tanto o acúmulo contínuo bruto quanto a chuva instantânea (delta) já corrigida pelos fatores de calibração. Também avaliaremos as grandezas para verificar eventuais suspeitas de descalibração (como a necessidade de dividir os dados por 10).
+
+## 2. Coleta e Preparação dos Dados
+
+```{r}
+#| label: setup-e-coleta
+#| message: false
+#| warning: false
+
+library(mongolite)
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(DT)
+
+# Configuração de ambiente e conexão
+caminho_env <- "/home/thiago/.env"
+if (file.exists(caminho_env)) readRenviron(caminho_env)
+
+mongo_url <- Sys.getenv("MONGODB_URI")
+if (mongo_url == "") mongo_url <- Sys.getenv("MONGO_URL")
+
+mongo_db <- Sys.getenv("MONGO_DB")
+if (mongo_db == "" || mongo_db == "cole_aqui_o_nome_do_banco") {
+  mongo_db <- gsub(".*/([^/?]+).*", "\\1", mongo_url)
+}
+
+# Coleta de metadados dos sensores
+m_sensors <- mongo(collection = "sensors", db = mongo_db, url = mongo_url)
+df_sensors <- m_sensors$find()
+
+# Coleta dos dados de clima (chuva) - Trazendo todos os registros válidos
+m_weather <- mongo(collection = "weatherdatas", db = mongo_db, url = mongo_url)
+df_weather_all <- m_weather$find(
+  query = '{"rainfall": {"$gte": 0}}', 
+  fields = '{"sensorId": 1, "rainfall": 1, "createdAt": 1}'
+)
+
+# Prepara os fatores de calibração
+col_id <- if ("sensorId" %in% names(df_sensors)) "sensorId" else if ("_id" %in% names(df_sensors)) "_id" else "id"
+
+df_sensores_calib <- df_sensors %>%
+  mutate(
+    sensor_join_id = as.character(!!sym(col_id)),
+    Nome = ifelse(!is.na(name) & name != "", name, sensor_join_id),
+    mult_chuva = if("calibration" %in% names(.)) calibration$rainfallMultiplier else 1
+  ) %>%
+  mutate(mult_chuva = ifelse(is.na(mult_chuva) | mult_chuva == 0, 1, mult_chuva)) %>%
+  mutate(
+    # Força a calibração de 0.2mm (pulsos) via script para as estações conhecidas
+    mult_chuva = ifelse(Nome %in% c("Neovia Km-189", "Pluviográfo Cidade", "SEEL BR-470 Km-199"), 0.2, mult_chuva)
+  ) %>%
+  select(sensor_join_id, Nome, mult_chuva)
+
+# Processamento (Cálculo do Delta exato)
+df_chuva <- df_weather_all %>%
+  mutate(sensorId = as.character(sensorId)) %>%
+  inner_join(df_sensores_calib, by = c("sensorId" = "sensor_join_id")) %>%
+  mutate(
+    createdAt = as_datetime(createdAt),
+    # Usa o multiplicador que já está cadastrado no Mongo
+    rainfall_cal = rainfall * mult_chuva
+  ) %>%
+  arrange(sensorId, createdAt) %>%
+  group_by(sensorId, Nome) %>%
+  mutate(
+    chuva_diff = rainfall_cal - lag(rainfall_cal),
+    precipitacao_inst = case_when(
+      is.na(chuva_diff) ~ 0,
+      chuva_diff < 0 ~ rainfall_cal, # Reset do sensor
+      TRUE ~ chuva_diff
+    ),
+    # Trava de outlier (salto impossível > 60mm em 1 disparo)
+    precipitacao_inst = ifelse(precipitacao_inst > 60, 0, precipitacao_inst)
+  ) %>%
+  ungroup()
+
+# Agregação Horária para o Gráfico
+df_chuva_hora <- df_chuva %>%
+  mutate(data_hora = floor_date(createdAt, "hour")) %>%
+  group_by(sensorId, Nome, data_hora) %>%
+  summarise(
+    chuva_mm = sum(precipitacao_inst, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+## 3. Visualização: Série Completa (Geral)
+
+Gráfico com a série histórica completa. Possui um controle deslizante na base para você aproximar qualquer intervalo desejado.
+
+```{r}
+#| label: plot-serie-completa
+#| fig-height: 6
+#| warning: false
+
+p_completo <- plot_ly(df_chuva_hora, x = ~data_hora, y = ~chuva_mm, color = ~Nome, type = 'scatter', mode = 'lines',
+                      text = ~paste("Sensor:", Nome, "<br>Data:", data_hora, "<br>Chuva:", round(chuva_mm, 2), "mm"),
+                      hoverinfo = "text") %>%
+  layout(title = "Série Histórica Completa de Chuva Horária",
+         xaxis = list(title = "Data/Hora", rangeslider = list(visible = TRUE)),
+         yaxis = list(title = "Chuva (mm)"))
+
+p_completo
+```
+
+> **Dica de uso do gráfico:** Como o gráfico utiliza o `Plotly`, você pode selecionar uma área com o mouse para fazer zoom em períodos específicos, além de dar um duplo-clique no nome da estação na legenda à direita para visualizar o comportamento de uma única estação isoladamente.

@@ -71,4 +71,4 @@ saveRDS(tb_parametros_limiares, "dados/parametros/tb_params_atual.rds")
 cat("\nProcesso de treinamento concluído. Arquivo 'tb_params_atual.rds' foi salvo.\n")
 
 # Desconecta do banco
-dbDisconnect(con)
+DBI::dbDisconnect(con)

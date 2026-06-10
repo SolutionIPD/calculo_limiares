@@ -106,7 +106,7 @@ datatable(df_inmet_filtrado, options = list(dom = 't', scrollX = TRUE))
 ```
 
 ### 3.2 Estações Locais (Sensores Próprios - "Meteorológica", "Cidade", etc.)
-Abaixo, o relatório varre todos os registros brutos da coleção `weatherdatas`, agrupa a chuva de cada estação em janelas contínuas de 96 horas, limpa os dias secos e treina o modelo preditivo exclusivo de forma instantânea. *(Nota: Todas as estações cadastradas localmente são calculadas dinamicamente)*
+Abaixo, o relatório varre todos os registros brutos da coleção `weatherdatas` (removendo o sensor de testes `testeEMA` da análise), agrupa a chuva de cada estação em janelas contínuas de 96 horas, limpa os dias secos e treina o modelo preditivo exclusivo de forma instantânea. *(Nota: Todas as estações cadastradas localmente são calculadas dinamicamente)*
 
 ```{r}
 #| echo: false
@@ -133,6 +133,7 @@ if (nrow(df_weather_all) > 0) {
       # Força a calibração de 0.2mm (pulsos) via script para as estações conhecidas
       mult_chuva = ifelse(Nome %in% c("Neovia Km-189", "Pluviográfo Cidade", "SEEL BR-470 Km-199"), 0.2, mult_chuva)
     ) %>%
+    filter(!str_detect(tolower(Nome), "testeema")) %>%
     select(sensor_join_id, Nome, mult_chuva)
 
   df_locais_treinados <- df_weather_all %>%
@@ -214,28 +215,6 @@ if (nrow(df_weather_all) > 0) {
 
 ---
 
-#| echo: false
-@@ -118,6 +118,7 @@
-      # Força a calibração de 0.2mm (pulsos) via script para as estações conhecidas
-      mult_chuva = ifelse(Nome %in% c("Neovia Km-189", "Pluviográfo Cidade", "SEEL BR-470 Km-199"), 0.2, mult_chuva)
-    ) %>%
-+    filter(Nome != "testeEMA") %>%
-    select(sensor_join_id, Nome, mult_chuva)
-
-  df_locais_treinados <- df_weather_all %>%
-@@ -174,9 +175,11 @@
-    Tipo = case_when(
-      str_detect(toupper(Nome), "INMET") ~ "INMET",
-      Nome %in% estacoes_mongo ~ "INMET",
-+      str_detect(Nome, "^A[0-9]{3}") ~ "INMET",
-      TRUE ~ "Sensor Próprio"
-    )
-  ) %>%
--  filter(!is.na(latitude) & !is.na(longitude))
-+  filter(!is.na(latitude) & !is.na(longitude)) %>%
-+  filter(Nome != "testeEMA")
-
-pal <- colorFactor(palette = c("#e31a1c", "#1f77b4"), levels = c("INMET", "Sensor Próprio"))
 ## 4. Mapa das Estações
 
 Abaixo, apresentamos a distribuição geográfica das estações cadastradas na coleção `sensors`, diferenciando as da rede INMET e os sensores próprios da plataforma.
@@ -251,8 +230,43 @@ library(leaflet)
 # Identificando a coluna de ID para o caso de nome nulo
 col_id <- if ("sensorId" %in% names(df_sensors)) "sensorId" else if ("_id" %in% names(df_sensors)) "_id" else "id"
 
-# Preparando os dados espaciais
-df_mapa <- df_sensors %>%
+# 1. Coordenadas das Estações INMET-RS (via PostgreSQL/PostGIS)
+library(DBI)
+library(RPostgres)
+
+caminho_renviron <- "/home/thiago/calculo_limiares/.Renviron"
+if (file.exists(caminho_renviron)) readRenviron(caminho_renviron)
+
+con <- dbConnect(RPostgres::Postgres(),
+                 host = Sys.getenv("DB_HOST", "localhost"),
+                 port = Sys.getenv("DB_PORT", 5432),
+                 dbname = Sys.getenv("DB_NAME"),
+                 user = Sys.getenv("DB_USER"),
+                 password = Sys.getenv("DB_PASSWORD"))
+
+df_inmet_coords <- dbGetQuery(con, "SELECT codigo AS \"Codigo\", lat AS latitude, lon AS longitude FROM estacoes")
+dbDisconnect(con)
+
+df_mapa_inmet <- data.frame(estacao_banco = estacoes_mongo) %>%
+  rowwise() %>%
+  mutate(
+    Estacao_CSV = df_limiares_inmet$Estação[str_detect(df_limiares_inmet$Estação, fixed(estacao_banco))][1],
+    Codigo = str_extract(Estacao_CSV, "^A[0-9]{3}")
+  ) %>%
+  ungroup() %>%
+  inner_join(df_inmet_coords, by = "Codigo") %>%
+  left_join(df_limiares_inmet %>% select(Estação, Status), by = c("Estacao_CSV" = "Estação")) %>%
+  mutate(
+    Nome = estacao_banco, 
+    Tipo = "INMET",
+    latitude = as.numeric(latitude),
+    longitude = as.numeric(longitude),
+    Status = coalesce(as.character(Status), "Sem Dados")
+  ) %>%
+  select(Nome, latitude, longitude, Tipo, Status)
+
+# 2. Preparando os dados espaciais (Sensores Próprios)
+df_mapa_proprios <- df_sensors %>%
   mutate(
     Nome = ifelse(!is.na(name) & name != "", name, as.character(!!sym(col_id))),
     latitude = as.numeric(latitude),
@@ -260,30 +274,74 @@ df_mapa <- df_sensors %>%
     Tipo = case_when(
       str_detect(toupper(Nome), "INMET") ~ "INMET",
       Nome %in% estacoes_mongo ~ "INMET",
+      str_detect(Nome, "^A[0-9]{3}") ~ "INMET",
       TRUE ~ "Sensor Próprio"
     )
   ) %>%
-  filter(!is.na(latitude) & !is.na(longitude))
+  filter(!is.na(latitude) & !is.na(longitude)) %>%
+  # Remove a "Null Island" (Oceano Atlântico 0,0) onde sensores mal cadastrados caem
+  filter(latitude != 0 & longitude != 0) %>%
+  filter(!str_detect(tolower(Nome), "testeema"))
 
-pal <- colorFactor(palette = c("#e31a1c", "#1f77b4"), levels = c("INMET", "Sensor Próprio"))
+if (exists("df_locais_treinados")) {
+  df_mapa_proprios <- df_mapa_proprios %>%
+    left_join(df_locais_treinados %>% select(Nome, Status), by = "Nome") %>%
+    mutate(Status = coalesce(as.character(Status), "Sem Dados"))
+} else {
+  df_mapa_proprios <- df_mapa_proprios %>% mutate(Status = "Sem Dados")
+}
 
-leaflet(df_mapa) %>%
+df_mapa_proprios <- df_mapa_proprios %>% select(Nome, latitude, longitude, Tipo, Status)
+
+# 3. Unindo ambas as redes para plotagem no mapa
+df_mapa <- bind_rows(df_mapa_proprios, df_mapa_inmet) %>%
+  distinct(Nome, .keep_all = TRUE)
+
+pal <- colorFactor(palette = c("#1a9641", "#fec44f", "#e31a1c", "#969696"), levels = c("Robusta", "Série Curta", "Inadequada", "Sem Dados"))
+
+# Separando as bases para plotar com formatos diferentes
+df_proprios <- df_mapa %>% filter(Tipo == "Sensor Próprio")
+df_inmet <- df_mapa %>% filter(Tipo == "INMET")
+
+# Gerando Triângulos SVG customizados (Data URIs)
+cria_triangulo <- function(cor) {
+  cor <- gsub("#", "%23", cor)
+  svg <- paste0("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,10 10,90 90,90' fill='", cor, "' opacity='0.8'/></svg>")
+  svg <- gsub("<", "%3C", svg); svg <- gsub(">", "%3E", svg); svg <- gsub("'", "%27", svg)
+  paste0("data:image/svg+xml;charset=UTF-8,", svg)
+}
+
+inmet_icons <- icons(
+  iconUrl = sapply(pal(df_inmet$Status), cria_triangulo),
+  iconWidth = 20, iconHeight = 20,
+  iconAnchorX = 10, iconAnchorY = 10
+)
+
+leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
   addCircleMarkers(
+    data = df_proprios,
     ~longitude, ~latitude,
-    popup = ~paste0("<b>", Nome, "</b><br/>Rede: ", Tipo),
+    popup = ~paste0("<b>", Nome, "</b><br/>Rede: ", Tipo, "<br/>Status: ", Status),
     label = ~Nome,
-    color = ~pal(Tipo),
+    color = ~pal(Status),
     stroke = FALSE,
     fillOpacity = 0.8,
     radius = 8
   ) %>%
-  addLegend("bottomright", pal = pal, values = ~Tipo, title = "Rede de Estações", opacity = 1)
+  addMarkers(
+    data = df_inmet,
+    ~longitude, ~latitude,
+    popup = ~paste0("<b>", Nome, "</b><br/>Rede: ", Tipo, "<br/>Status: ", Status),
+    label = ~Nome,
+    icon = inmet_icons
+  ) %>%
+  addLegend("bottomright", pal = pal, values = df_mapa$Status, title = "Status das Estações", opacity = 1)
 ```
 
 ---
 
-## 5. Estrutura Proposta para Integração
+## 5. Plano de Integração e Atualização
 
 Para que a plataforma comece a consumir as novas modelagens estatísticas, **não será necessário alterar o schema do banco de dados ou a interface**.
 
@@ -295,4 +353,36 @@ O pipeline de dados gerará um formato 100% compatível com a coleção `limits`
 4. **Parâmetros Base**: `mu`, `phi` e `power` serão atualizados com os novos indicadores das equações.
 5. Demais controles (`__v`, `createdAt`, `updatedAt`) seguem o mesmo padrão preenchido com datas atualizadas.
 
-Durante a atualização, podemos limpar os registros legados da `limits` e repopular via rotina automatizada, o que atualizará os indicadores sem impacto sistêmico.
+### 5.1 Frequência de Execução (Cronjob)
+Como os limiares da distribuição de Tweedie são baseados no comportamento histórico de longo prazo, a variação de um único dia de chuva não causa mudanças bruscas nos gatilhos. 
+Por conta disso, recomendamos que a rotina de re-treinamento e atualização dos limiares seja engatilhada **semanalmente** (ex: madrugadas de domingo).
+
+### 5.2 Abordagem 1: Injeção Direta no Banco (Via R)
+Nesta abordagem, o próprio script em R limpa a coleção e reinsere a matriz atualizada. É a forma mais rápida, operando diretamente via `mongolite`.
+
+```r
+#| eval: false
+library(mongolite)
+
+# 1. Conecta na coleção Limits
+m_limits <- mongo(collection = "limits", db = Sys.getenv("MONGO_DB"), url = Sys.getenv("MONGO_URL"))
+
+# 2. Remove os limites legados (Drop seguro)
+m_limits$remove('{}')
+
+# 3. Insere o novo dataframe com limites 96h calculados
+m_limits$insert(df_novos_limites)
+```
+
+### 5.3 Abordagem 2: Webhook / API REST (Via cURL)
+Caso se opte por não liberar acesso de escrita direto ao MongoDB por questões de arquitetura/segurança, o pipeline em R exportará um arquivo `.json` e fará um `POST` disparando a atualização para o Backend da plataforma via **cURL**.
+
+```bash
+# O R salva o df_novos_limites.json e notifica a API da plataforma
+curl -X POST https://api.suaplataforma.com.br/v1/limits/sync \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer <SEU_TOKEN_DE_SERVICO>" \
+     -d @df_novos_limites.json
+```
+
+Desta forma, o sistema fica completamente desacoplado: a estatística processa e notifica o backend, que por sua vez se encarrega de persistir a informação validada no MongoDB.

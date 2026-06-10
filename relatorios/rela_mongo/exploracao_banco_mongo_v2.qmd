@@ -105,8 +105,8 @@ df_inmet_filtrado <- df_limiares_inmet %>%
 datatable(df_inmet_filtrado, options = list(dom = 't', scrollX = TRUE))
 ```
 
-### 3.2 Estações Locais (Sensores Próprios - "Meteorológica", "Cidade", etc.)
-Abaixo, o relatório varre todos os registros brutos da coleção `weatherdatas`, agrupa a chuva de cada estação em janelas contínuas de 96 horas, limpa os dias secos e treina o modelo preditivo exclusivo de forma instantânea. *(Nota: Todas as estações cadastradas localmente são calculadas dinamicamente)*
+### 3.2 Estações Locais (Sensores Próprios)
+Abaixo, o relatório varre todos os registros brutos da coleção `weatherdatas` (removendo o sensor de testes `testeEMA` da análise), agrupa a chuva de cada estação em janelas contínuas de 96 horas, limpa os dias secos e treina o modelo preditivo exclusivo de forma instantânea. *(Nota: Todas as estações cadastradas localmente são calculadas dinamicamente)*
 
 ```{r}
 #| echo: false
@@ -133,6 +133,7 @@ if (nrow(df_weather_all) > 0) {
       # Força a calibração de 0.2mm (pulsos) via script para as estações conhecidas
       mult_chuva = ifelse(Nome %in% c("Neovia Km-189", "Pluviográfo Cidade", "SEEL BR-470 Km-199"), 0.2, mult_chuva)
     ) %>%
+    filter(Nome != "testeEMA") %>%
     select(sensor_join_id, Nome, mult_chuva)
 
   df_locais_treinados <- df_weather_all %>%
@@ -214,28 +215,6 @@ if (nrow(df_weather_all) > 0) {
 
 ---
 
-#| echo: false
-@@ -118,6 +118,7 @@
-      # Força a calibração de 0.2mm (pulsos) via script para as estações conhecidas
-      mult_chuva = ifelse(Nome %in% c("Neovia Km-189", "Pluviográfo Cidade", "SEEL BR-470 Km-199"), 0.2, mult_chuva)
-    ) %>%
-+    filter(Nome != "testeEMA") %>%
-    select(sensor_join_id, Nome, mult_chuva)
-
-  df_locais_treinados <- df_weather_all %>%
-@@ -174,9 +175,11 @@
-    Tipo = case_when(
-      str_detect(toupper(Nome), "INMET") ~ "INMET",
-      Nome %in% estacoes_mongo ~ "INMET",
-+      str_detect(Nome, "^A[0-9]{3}") ~ "INMET",
-      TRUE ~ "Sensor Próprio"
-    )
-  ) %>%
--  filter(!is.na(latitude) & !is.na(longitude))
-+  filter(!is.na(latitude) & !is.na(longitude)) %>%
-+  filter(Nome != "testeEMA")
-
-pal <- colorFactor(palette = c("#e31a1c", "#1f77b4"), levels = c("INMET", "Sensor Próprio"))
 ## 4. Mapa das Estações
 
 Abaixo, apresentamos a distribuição geográfica das estações cadastradas na coleção `sensors`, diferenciando as da rede INMET e os sensores próprios da plataforma.
@@ -251,19 +230,39 @@ library(leaflet)
 # Identificando a coluna de ID para o caso de nome nulo
 col_id <- if ("sensorId" %in% names(df_sensors)) "sensorId" else if ("_id" %in% names(df_sensors)) "_id" else "id"
 
-# Preparando os dados espaciais
-df_mapa <- df_sensors %>%
+# Identificando colunas de coordenadas no CSV do INMET
+col_lat_inmet <- names(df_limiares_inmet)[str_detect(toupper(names(df_limiares_inmet)), "LAT")][1]
+col_lon_inmet <- names(df_limiares_inmet)[str_detect(toupper(names(df_limiares_inmet)), "LON")][1]
+
+df_mapa_inmet <- data.frame()
+if (!is.na(col_lat_inmet) && !is.na(col_lon_inmet)) {
+  df_mapa_inmet <- df_limiares_inmet %>%
+    filter(str_detect(Estação, paste(estacoes_mongo, collapse = "|"))) %>%
+    mutate(
+      Nome = Estação,
+      latitude = as.numeric(!!sym(col_lat_inmet)),
+      longitude = as.numeric(!!sym(col_lon_inmet)),
+      Tipo = "INMET"
+    ) %>%
+    select(Nome, latitude, longitude, Tipo) %>%
+    filter(!is.na(latitude) & !is.na(longitude))
+}
+
+# Preparando os dados espaciais (Próprios)
+df_mapa_proprios <- df_sensors %>%
   mutate(
     Nome = ifelse(!is.na(name) & name != "", name, as.character(!!sym(col_id))),
     latitude = as.numeric(latitude),
     longitude = as.numeric(longitude),
-    Tipo = case_when(
-      str_detect(toupper(Nome), "INMET") ~ "INMET",
-      Nome %in% estacoes_mongo ~ "INMET",
-      TRUE ~ "Sensor Próprio"
-    )
+    Tipo = "Sensor Próprio"
   ) %>%
-  filter(!is.na(latitude) & !is.na(longitude))
+  filter(!is.na(latitude) & !is.na(longitude)) %>%
+  filter(Nome != "testeEMA") %>%
+  select(Nome, latitude, longitude, Tipo)
+
+# Unindo tudo
+df_mapa <- bind_rows(df_mapa_proprios, df_mapa_inmet) %>%
+  distinct(Nome, .keep_all = TRUE)
 
 pal <- colorFactor(palette = c("#e31a1c", "#1f77b4"), levels = c("INMET", "Sensor Próprio"))
 

@@ -13,12 +13,15 @@ A estrutura do repositório foi desenhada para separar claramente a ingestão de
 │   └── parametros/          # Resultados do treinamento: tb_params_atual.rds
 ├── R/
 │   ├── 01_processo_treinamento_db.R # Script de ETL: lê do banco, ajusta modelos e salva o .rds
+│   ├── 09_ver_limiares_mongo.R      # Conecta ao MongoDB de produção e baixa a coleção limits
+│   ├── 10_preparar_carga_mongo.R    # Formata e injeta os novos limiares (96h) no MongoDB
 │   ├── api_consultas.R              # Motor de consultas espaciais via PostGIS (para a API)
 │   ├── funcoes_db.R                 # Core (DB): funções que acessam o banco de dados
 │   └── legado/
 │       ├── 02_carga_banco.R         # (LEGADO) Script de carga única: migra CSVs para o PostGIS
 │       └── funcoes_calculo.R        # (LEGADO) Core antigo baseado em CSVs
 ├── relatorios/
+│   ├── rela_mongo/                # Relatórios e mapas iterativos explorando a integração com MongoDB
 │   ├── relatorio_tecnico.qmd      # Dashboard técnico interativo da metodologia
 │   └── relatorio_fontes_dados.qmd # Análise crítica das fontes de dados
 ├── organiza_inmet.sh              # Script Bash para mapear e organizar CSVs baixados
@@ -45,7 +48,7 @@ Foram implementados dois motores de cálculo para a extração dos limiares (qua
 * **Quarto**: Para renderizar os relatórios.
 * **Bibliotecas R**: Instale os pacotes necessários:
   ```r
-  install.packages(c("tidyverse", "tweedie", "statmod", "plotly", "DT", "leaflet", "crosstalk", "RPostgres", "DBI", "lubridate", "sf", "geobr"))
+  install.packages(c("tidyverse", "tweedie", "statmod", "plotly", "DT", "leaflet", "crosstalk", "RPostgres", "DBI", "lubridate", "sf", "geobr", "mongolite"))
   ```
 * **Variáveis de Ambiente**: Crie um arquivo `.Renviron` na raiz do projeto (`/home/thiago/calculo_limiares/.Renviron`) com as credenciais do seu banco de dados para que os scripts possam se conectar:
   ```

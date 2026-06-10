@@ -8,7 +8,7 @@ format:
     fontsize: 10pt
 ---
 
-Olá equipe! Este relatório apresenta o resultado da nossa exploração no banco de dados MongoDB da plataforma. O objetivo é documentar quais coleções existem, como os dados estão estruturados atualmente e, por fim, demonstrar como os novos limiares de alerta precisarão ser formatados para uma integração tranquila no sistema.
+Este relatório apresenta o resultado da nossa exploração no banco de dados MongoDB da plataforma. O objetivo é documentar quais coleções existem, como os dados estão estruturados atualmente e, por fim, demonstrar como os novos limiares de alerta precisarão ser formatados para uma integração tranquila no sistema.
 
 ## 1. Coleções Mapeadas no MongoDB
 
@@ -61,22 +61,24 @@ df_weather <- m_weather$find(limit = 100, sort = '{"createdAt": -1}')
 Parâmetros matemáticos e limiares de chuva (`r0` a `r3`) para diferentes janelas de tempo (`horas`).
 ```{r}
 #| echo: false
-kable(head(df_limits %>% select(any_of(c("station", "horas", "mu", "phi", "power", "r0", "r1", "r2", "r3"))), 5), booktabs = TRUE) %>%
-  kable_styling(font_size = 8, latex_options = "scale_down")
+kable(head(df_limits %>% select(station, horas, mu, phi, power, r0, r1, r2, r3) %>% mutate(across(where(is.numeric), ~round(., 2))), 5), booktabs = TRUE) %>%
+  kable_styling(font_size = 7, latex_options = c("scale_down", "HOLD_position"))
 ```
 
 ### 2.2 Coleção: `sensors` (Metadados das Estações)
-Tabela de cadastro físico das estações. Contém chaves importantes para visualização no mapa, como `sensorId`, `name`, `latitude` e `longitude`.
+Cadastro físico das estações, exibindo apenas as chaves principais como `sensorId`, `name` e `sensorType`.
 ```{r}
 #| echo: false
-kable(head(df_sensors %>% select(-any_of(c("organizations", "__v"))), 5))
+kable(head(df_sensors %>% select(any_of(c("sensorId", "name", "sensorType"))), 5), booktabs = TRUE) %>%
+  kable_styling(font_size = 7, latex_options = c("scale_down", "HOLD_position"))
 ```
 
 ### 2.3 Coleção: `weatherdatas` (Métricas de Telemetria)
 Armazena o histórico contínuo de leituras em campo. Aqui estão as informações de chuva (`rainfall`), relacionadas aos sensores através de um ID.
 ```{r}
 #| echo: false
-kable(head(df_weather %>% select(any_of(c("id", "_id", "sensorId", "rainfall", "temperature", "humidity", "windSpeed", "createdAt"))), 5))
+kable(head(df_weather %>% select(any_of(c("sensorId", "rainfall", "temperature", "humidity", "createdAt"))), 5), booktabs = TRUE) %>%
+  kable_styling(font_size = 7, latex_options = c("scale_down", "HOLD_position"))
 ```
 
 ---
@@ -105,7 +107,8 @@ df_inmet_filtrado <- df_limiares_inmet %>%
   filter(str_detect(Estação, paste(estacoes_mongo, collapse = "|"))) %>%
   select(Estação, `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`, Status)
   
-kable(df_inmet_filtrado)
+kable(df_inmet_filtrado, booktabs = TRUE, align = "c") %>%
+  kable_styling(font_size = 7, latex_options = c("scale_down", "HOLD_position"))
 ```
 
 ### 3.2 Estações Locais (Sensores Próprios - "Meteorológica", "Cidade", etc.)
@@ -210,7 +213,11 @@ if (nrow(df_weather_all) > 0) {
       `Moderado (mm)`, `Alto (mm)`, `Muito Alto (mm)`, `Altíssimo (mm)`, `Dias c/ Chuva` = n_dias_chuva
     )
     
-  kable(df_locais_exibicao) } else { cat("Nenhum dado válido encontrado para treinar os sensores locais.") }
+  kable(df_locais_exibicao, booktabs = TRUE, align = "c") %>%
+    kable_styling(font_size = 7, latex_options = c("scale_down", "HOLD_position"))
+} else {
+  cat("Nenhum dado válido encontrado para treinar os sensores locais.")
+}
 ```
 
 ---
@@ -303,8 +310,8 @@ df_mapa <- bind_rows(df_mapa_proprios, df_mapa_inmet) %>%
 # Paleta de cores
 cores_status <- c("Robusta" = "#1a9641", "Série Curta" = "#fec44f", "Inadequada" = "#e31a1c", "Sem Dados" = "#969696")
 
-# 1. Baixar o shapefile do estado (Rio Grande do Sul)
-estado_shape <- read_state(code_state = "RS", year = 2020)
+# 1. Baixar o shapefile dos municípios do Rio Grande do Sul (Mapa Político)
+estado_shape <- read_municipality(code_muni = "RS", year = 2020, showProgress = FALSE)
 
 # 2. Converter o dataframe de estações para um objeto espacial (sf)
 sf_estacoes <- df_mapa %>%
@@ -319,7 +326,7 @@ ylim <- c(bbox_estacoes$ymin - buffer, bbox_estacoes$ymax + buffer)
 
 # 3. Criar o mapa estático com ggplot2
 ggplot() +
-  geom_sf(data = estado_shape, fill = "#f5f5f5", color = "#cccccc") +
+  geom_sf(data = estado_shape, fill = "#f5f5f5", color = "#cccccc", linewidth = 0.3) +
   geom_sf(data = sf_estacoes, aes(color = Status, shape = Tipo), size = 4, alpha = 0.8) +
   geom_text_repel(
     data = sf_estacoes,
@@ -384,7 +391,7 @@ m_limits$insert(df_novos_limites)
 ```
 
 ### 5.3 Abordagem 2: Webhook / API REST (Via cURL)
-Caso se opte por não liberar acesso de escrita direto ao MongoDB por questões de arquitetura/segurança, o pipeline em R exportará um arquivo `.json` e fará um `POST` disparando a atualização para o Backend da plataforma via **cURL**.
+Caso a equipe de Engenharia de Software opte por não liberar acesso de escrita direto ao MongoDB por questões de arquitetura/segurança, o pipeline em R exportará um arquivo `.json` e fará um `POST` disparando a atualização para o Backend da plataforma via **cURL**.
 
 ```bash
 # O R salva o df_novos_limites.json e notifica a API da plataforma
